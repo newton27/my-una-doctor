@@ -1,0 +1,37 @@
+MY UNA DOCTOR — UPDATE 0.1.3 TO 0.1.4
+=====================================
+
+This release includes the first proper UNA updater package for My UNA Doctor.
+
+WHAT CHANGED
+------------
+- Log age is determined from each log entry's timestamp, not the log file mtime.
+- Only actionable entries from the last 24 hours lower the health score.
+- Entries 1-7 days old and older history remain visible for diagnosis.
+- UNA multiline module-operation errors are grouped with their detail lines.
+- Repeated signatures normalize timestamps, media IDs and volatile URL parameters.
+- Log tail inspection increases to 256 KiB while remaining read-only.
+
+PREFERRED UPDATE METHOD
+-----------------------
+If Studio currently reports My UNA Doctor 0.1.3, use the separate updater ZIP:
+
+    My-UNA-Doctor-UPDATE-0.1.3-to-0.1.4.zip
+
+The updater uses UNA's normal BxDolStudioUpdater structure with version_from
+0.1.3 and version_to 0.1.4. Use UNA Studio's module/app update workflow. Do not
+manually edit sys_modules.version.
+
+After the update, confirm Studio reports 0.1.4 and run a Full Health Scan.
+
+FRESH INSTALL
+-------------
+The full My-UNA-Doctor-0.1.4-FIRST-TEST.zip is intended for a fresh installation
+or for inspecting the complete module source. Do not uninstall a working 0.1.3
+installation merely to move to 0.1.4.
+
+FIRST-TEST NOTE
+---------------
+A previous 0.1.x uninstall attempt produced a language-update failure on the test
+site. That uninstall path remains under investigation. Updating does not require
+uninstalling Doctor.

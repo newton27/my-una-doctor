@@ -1,0 +1,12 @@
+MY UNA DOCTOR 0.1.7 -> 0.1.8
+
+Health-aware log classification update.
+
+- Verifies missing bx_albums_files transcoder IDs against live Albums relationships.
+- Classifies source IDs with no live references as stale media requests (INFO).
+- Keeps missing media with live references health-impacting (WARNING).
+- Classifies explicit Studio module-operation failures as administrative history (INFO).
+- Leaves unknown/unverified storage or transcoder failures health-impacting.
+- Keeps the module diagnostic-only; no repair, delete, rewrite or cleanup action is performed.
+
+Use the proper UNA updater. Do not uninstall 0.1.7 first.

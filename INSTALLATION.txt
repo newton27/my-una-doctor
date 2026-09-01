@@ -1,0 +1,241 @@
+MY UNA DOCTOR 0.1.10 — INSTALLATION & TEST MANUAL
+=====================================================
+
+Product: My UNA Doctor
+Vendor: NewtronJax
+Type: Studio-only UNA CMS module
+Build: 0.1.10 — Diagnostic Test Build
+Target: UNA 15.0.0-A1 or newer
+
+
+0.1.4 SCAN-QUALITY UPDATE
+-------------------------
+This build expands warning/critical evidence by default. Cron warnings include the
+registered and resolved paths. Log warnings now group repeated signatures, exclude
+backup/archive log files, redact likely secrets in samples, and avoid counting the
+generic word "Exception" by itself.
+
+FIRST-TEST CORRECTION IN 0.1.4
+------------------------------
+Version 0.1.4 renames the internal Modules diagnostics route so it does not
+override UNA Studio's inherited getModules() helper. Use 0.1.4 instead of
+the earlier 0.1.1 first-test ZIP.
+
+IMPORTANT
+---------
+This is the first test build. My UNA Doctor is diagnostic-only: it scans and
+records results but does not automatically repair UNA. Even so, test with a
+current backup available before installing any development module.
+
+1. BEFORE INSTALLING
+--------------------
+1. Create a current backup of the UNA database and site files. If My UNA World
+   is installed, create and verify a current full backup first.
+2. Confirm the site is presently loading both the public site and UNA Studio.
+3. Record the current UNA version and PHP version.
+4. Do not manually unzip this package into a second extra directory.
+
+The ZIP is intentionally packaged as:
+
+    newton/my_una_doctor/
+
+After UNA installs/extracts it, the module directory should be:
+
+    modules/newton/my_una_doctor/
+
+2. INSTALL THROUGH UNA STUDIO
+-----------------------------
+1. Sign in as the UNA administrator.
+2. Open UNA Studio.
+3. Open Modules / Apps (the exact Studio label can vary by UNA build).
+4. Use the module upload/install control and select this ZIP file.
+5. Allow UNA to unpack and install the module.
+6. Confirm that installation completes without a SQL, language, class or
+   compatibility error.
+
+3. WHAT INSTALLATION CREATES
+----------------------------
+The installer should create:
+
+- Module registration for my_una_doctor.
+- Studio page registration named my_una_doctor.
+- Studio launcher widget using:
+
+    modules/newton/my_una_doctor/template/images/icons/std-icon.svg
+
+- Database table:
+
+    my_una_doctor_scans
+
+No UNA core file should be modified by installation.
+
+4. CONFIRM THE STUDIO ICON
+--------------------------
+Return to the main Studio launcher. You should see the My UNA Doctor icon.
+The icon follows UNA's standard module icon layout:
+
+    template/images/icons/std-icon.svg
+
+If the module is installed but the icon is blank or missing, do not alter core
+files. First verify that the file exists at the path above and that Studio's
+page/widget records point to the same module path.
+
+5. FIRST HEALTH SCAN
+--------------------
+1. Open My UNA Doctor from Studio.
+2. Confirm the Overview page loads.
+3. Choose Run Full Health Scan.
+4. Let the page finish and record the displayed:
+
+   - UNA Health percentage
+   - Critical count
+   - Warning count
+   - Total checks
+   - Any red or amber finding
+
+5. Open these sections and confirm each loads:
+
+   - Overview
+   - System
+   - Modules
+   - Database
+   - Logs
+   - History
+   - Settings
+
+6. Open History and confirm the first scan appears there.
+
+6. WHAT TO SEND BACK AFTER THE TEST
+-----------------------------------
+For the fastest diagnosis of the first test, capture either screenshots or
+copy/paste the following:
+
+- Any UNA Studio install error.
+- Whether the My UNA Doctor Studio icon appeared.
+- The first Health Score.
+- All Critical findings.
+- All Warning findings.
+- Any page that gives a blank screen, spinner, PHP error or database error.
+
+Do not repair a finding manually just because Doctor reports it. The purpose of
+this first build is to confirm that the scanner correctly identifies the live
+UNA state before repair features are introduced.
+
+7. OPTIONAL SERVER-SIDE VERIFICATION
+------------------------------------
+From the UNA web root, an administrator with shell access may verify the module
+layout with:
+
+    find modules/newton/my_una_doctor -maxdepth 4 -type f | sort
+
+Check PHP syntax with the PHP version used by the site, for example:
+
+    find modules/newton/my_una_doctor -name '*.php' -print0 | \
+      xargs -0 -n1 /bin/php8.3 -l
+
+Confirm the scan table exists from an UNA-aware PHP shell or database tool:
+
+    SHOW TABLES LIKE 'my_una_doctor_scans';
+
+8. UNINSTALLING THE FIRST TEST BUILD
+------------------------------------
+Use UNA Studio's normal uninstall operation. Uninstall removes My UNA Doctor's
+Studio page/widget registrations and drops only its own scan-history table:
+
+    my_una_doctor_scans
+
+The module is not designed to remove or modify unrelated UNA data.
+
+9. FIRST-TEST SUCCESS CHECKLIST
+-------------------------------
+[ ] ZIP installs without directory-depth errors.
+[ ] UNA accepts the module compatibility declaration.
+[ ] My UNA Doctor appears in Studio.
+[ ] Studio icon renders correctly.
+[ ] Overview loads.
+[ ] Full Health Scan completes.
+[ ] Health score and findings render.
+[ ] History contains the completed scan.
+[ ] Other Doctor Studio sections load.
+[ ] Public UNA pages continue to work normally.
+[ ] No new fatal errors are produced by My UNA Doctor.
+
+END OF FIRST-TEST MANUAL
+
+VERSION 0.1.4 NOTES
+-------------------
+0.1.4 improves log diagnostics. It scores timestamped errors from the last 24
+hours as current, retains older errors as history, groups multiline UNA log
+entries, and normalizes repeated error signatures.
+
+UPDATING AN EXISTING 0.1.3 INSTALLATION
+---------------------------------------
+Do not uninstall 0.1.3 simply to move to 0.1.4. Use the separate
+My-UNA-Doctor-UPDATE-0.1.3-to-0.1.4.zip through UNA Studio's normal module/app
+update workflow. The updater declares version_from 0.1.3 and version_to 0.1.4
+and updates the source files through BxDolStudioUpdater.
+
+A previous first-test uninstall attempt logged a language-update failure. That
+uninstall behavior is still being investigated and is not required for this
+update.
+
+
+VERSION 0.1.5 NOTES
+-------------------
+0.1.5 is the safe follow-on for a site that has already installed 0.1.4. It
+adds the root-level cover.jpg and marketplace package notes through a normal
+UNA updater and updates the module version to 0.1.5.
+
+If Studio's Store product-details popup still says that information cannot be
+loaded after this update, that does not indicate a local module failure. The
+popup requests product data from the UNA Marketplace service. A matching
+Marketplace product record must exist for the internal module name
+"my_una_doctor" before UNA can display marketplace title/vendor/screenshots/
+price/reviews in that popup.
+
+UPDATING AN EXISTING 0.1.4 INSTALLATION
+---------------------------------------
+Do not uninstall 0.1.4 and do not run the 0.1.3-to-0.1.4 updater again. Use the
+separate My-UNA-Doctor-UPDATE-0.1.4-to-0.1.5-MARKET-READY.zip package.
+
+VERSION 0.1.7 NOTES
+--------------------
+0.1.7 is a presentation/metadata consistency update for sites already on 0.1.6.
+It removes the stale hard-coded "v0.1.4" label from the Studio Safety Model and
+synchronizes package documentation. Diagnostic behavior is unchanged.
+
+UPDATING AN EXISTING 0.1.6 INSTALLATION
+----------------------------------------
+Do not uninstall 0.1.6. Apply the dedicated 0.1.6-to-0.1.7 UNA updater so UNA
+updates the registered version and file-integrity tracking normally.
+
+
+
+VERSION 0.1.8 NOTES
+
+0.1.8 adds health-aware log classification. Verified stale Albums transcoder requests and explicit Studio module-operation failure history stay visible as informational evidence without lowering the current health score. Missing Albums media that is still referenced remains a warning. Unknown storage/transcoder errors remain warnings until a storage-specific verification model exists.
+
+UPDATING AN EXISTING 0.1.7 INSTALLATION
+
+Do not uninstall 0.1.7. Apply the dedicated 0.1.7-to-0.1.8 UNA updater so UNA advances the module version and rebuilds its file-tracking hashes normally.
+
+
+VERSION 0.1.9 NOTES
+--------------------
+- Adds the read-only Storage & Media Inspector for Albums and Timeline relational integrity.
+- Adds human-readable evidence summaries while preserving technical JSON.
+- Extends stale-media log verification to supported Timeline media storage.
+- No automatic repair actions are introduced.
+
+VERSION 0.1.10 NOTES
+--------------------
+- Presentation-only evidence refinement; diagnostic/scoring behavior from 0.1.9 is unchanged.
+- Health impact and Repair required render on separate lines.
+- Placeholder-only technical evidence is hidden instead of showing an empty disclosure.
+- Meaningful technical evidence remains available for diagnosis and support.
+- This release remains diagnostic-only and introduces no repair actions.
+
+UPDATING FROM 0.1.9
+-------------------
+Do not uninstall 0.1.9. Apply the dedicated 0.1.9-to-0.1.10 UNA updater so Studio advances the version and rebuilds Doctor's file tracking normally.
+

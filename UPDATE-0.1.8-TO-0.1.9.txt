@@ -1,0 +1,23 @@
+MY UNA DOCTOR 0.1.8 -> 0.1.9
+================================
+
+Purpose
+-------
+Adds the first read-only Storage & Media Inspector and human-readable evidence.
+
+New diagnostics
+---------------
+- Albums media links -> source storage rows
+- Albums media links -> album rows
+- Album thumbnail -> source storage rows
+- Timeline photo/video/file links -> source storage rows
+- Timeline photo/video/file links -> Timeline event rows
+- Stale Timeline media log verification
+
+Presentation
+------------
+Evidence now shows a readable summary, affected relationships, health impact, and whether repair is required. Detailed JSON remains under Technical evidence.
+
+Safety
+------
+This update remains diagnostic-only. It does not delete, repair, rebuild, move or rewrite UNA media or storage records.

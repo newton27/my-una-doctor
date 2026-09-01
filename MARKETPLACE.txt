@@ -1,0 +1,77 @@
+MY UNA DOCTOR - UNA MARKETPLACE PACKAGE NOTES
+=============================================
+
+Product title:
+My UNA Doctor
+
+Internal module name:
+my_una_doctor
+
+Vendor:
+NewtronJax
+
+Version:
+0.1.10
+
+Category recommendation:
+Tools / Administration / Utilities
+
+Short description:
+Studio-only UNA site health, diagnostics and integrity scanner. My UNA Doctor checks UNA/PHP compatibility, module registration, database integrity, notification handlers, cron jobs, writable directories, disk safety and recent actionable logs, then records scan history in Studio.
+
+Marketplace summary:
+Diagnose first. Repair only when the evidence is clear. My UNA Doctor gives UNA administrators a fast health score and evidence-driven diagnostics for common configuration, module, database, cron, filesystem and log problems without making automatic repairs.
+
+Current v0.1.x behavior:
+- Diagnostic/read-only scanning.
+- No automatic repair actions.
+- Health score and severity summary.
+- System and PHP checks.
+- Module registration and install metadata checks.
+- Database and UNA alert integrity checks.
+- Notification handler/settings checks.
+- Cron file-reference validation.
+- Filesystem permissions and disk-space checks.
+- Timestamp-aware log analysis and scan history.
+
+Marketplace/store artwork:
+- cover.jpg is intentionally placed in the module root, following the same packaging convention seen in the MasterGate reference package.
+- Studio launcher artwork remains template/images/icons/std-icon.svg.
+
+IMPORTANT ABOUT STUDIO STORE DETAILS
+------------------------------------
+UNA Studio's store.php product-detail popup is populated from the UNA Market API. A local cover.jpg prepares the package/listing artwork, but it cannot by itself create a remote marketplace product record. Until My UNA Doctor is published/registered in the UNA Marketplace with the matching internal module name "my_una_doctor", a local custom install can still show "info can't be loaded" when Studio requests marketplace product details.
+
+
+0.1.5 MARKET PRESENTATION UPDATE
+--------------------------------
+Version 0.1.5 is the clean follow-on for installations already updated to 0.1.4.
+It adds the marketplace/header assets through a normal UNA updater instead of
+re-running the 0.1.3-to-0.1.4 package.
+
+
+0.1.6 SCANNER REPAIR
+--------------------
+Restores the database/table helper methods accidentally omitted from the 0.1.4 scanner refactor and makes the displayed Doctor version read from UNA's installed module record.
+
+0.1.7 PRESENTATION CONSISTENCY
+------------------------------
+Removes stale hard-coded release numbering from the Studio Safety Model and
+synchronizes module documentation with the installed UNA module version.
+Diagnostic behavior is unchanged from 0.1.6.
+
+
+
+0.1.8 HEALTH-AWARE LOG CLASSIFICATION
+
+Doctor now verifies missing Albums transcoder source IDs against live Albums relationships. Confirmed stale requests remain visible as INFO and no longer lower the health score. Explicit Studio module-operation failures are preserved as administrative history rather than current runtime health failures. Unverified storage/transcoder failures remain warnings.
+
+
+0.1.9 STORAGE & MEDIA INSPECTOR
+--------------------------------
+Adds read-only relational integrity checks for UNA Albums and Timeline media, including missing source rows, missing parent Albums/Timeline events, and album thumbnail source references. Findings now include human-readable evidence summaries with health impact and repair-required guidance. Technical JSON remains available for support/debugging. Physical storage-backend verification is not performed in this release.
+
+0.1.10 EVIDENCE PRESENTATION REFINEMENT
+
+Keeps the validated 0.1.9 diagnostic/scoring engine unchanged while cleaning Studio findings: health impact and repair-required guidance now render on separate lines, and placeholder-only Technical evidence sections are suppressed. Meaningful technical details remain available when they add diagnostic value.
+

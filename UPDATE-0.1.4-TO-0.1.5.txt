@@ -1,0 +1,13 @@
+MY UNA DOCTOR 0.1.4 -> 0.1.5
+================================
+
+This updater is for installations already reporting My UNA Doctor 0.1.4.
+
+It adds/refines:
+- root-level cover.jpg marketplace/header artwork
+- marketplace listing/package notes
+- updated installation documentation
+- version registration to 0.1.5
+
+It does not downgrade the module and it does not rerun the 0.1.3 -> 0.1.4
+scanner update.

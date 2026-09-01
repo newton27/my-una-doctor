@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="606px" height="606px" viewBox="0 0 606 606" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="doctor-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#115e59"/>
+    </linearGradient>
+    <linearGradient id="doctor-pulse" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ccfbf1"/>
+      <stop offset="1" stop-color="#5eead4"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="600" height="600" rx="112" fill="#ffffff" stroke="#000000" stroke-width="4"/>
+  <rect x="18" y="18" width="570" height="570" rx="100" fill="url(#doctor-bg)"/>
+  <circle cx="303" cy="275" r="160" fill="#ffffff" fill-opacity="0.10"/>
+  <path d="M276 128h54v119h119v54H330v119h-54V301H157v-54h119z" fill="#ffffff"/>
+  <path d="M92 449h90l38-72 55 132 63-201 47 141h129" fill="none" stroke="url(#doctor-pulse)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

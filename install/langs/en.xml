@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources name="en" flag="gb" title="English">
+    <string name="_sys_module_my_una_doctor"><![CDATA[My UNA Doctor]]></string>
+    <string name="_my_una_doctor"><![CDATA[My UNA Doctor]]></string>
+    <string name="_my_una_doctor_overview"><![CDATA[Overview]]></string>
+    <string name="_my_una_doctor_system"><![CDATA[System]]></string>
+    <string name="_my_una_doctor_modules"><![CDATA[Modules]]></string>
+    <string name="_my_una_doctor_database"><![CDATA[Database]]></string>
+    <string name="_my_una_doctor_logs"><![CDATA[Logs]]></string>
+    <string name="_my_una_doctor_history"><![CDATA[History]]></string>
+    <string name="_my_una_doctor_settings"><![CDATA[Settings]]></string>
+</resources>

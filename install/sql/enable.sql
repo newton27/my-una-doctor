@@ -1,0 +1,1 @@
+-- No additional enable-time registrations are required in v0.1.0.

@@ -1,0 +1,11 @@
+MY UNA DOCTOR 0.1.5 -> 0.1.6
+
+Scanner repair release.
+
+Fixes:
+- Restores tableExists() and tableFields() used by Database, Modules, Notifications and Cron scans.
+- Removes four false "Scanner could not complete this section" warnings introduced in 0.1.4.
+- Restores the complete health-check count.
+- Doctor now reads its displayed module version from UNA sys_modules instead of a hard-coded scanner value.
+
+Use the proper UNA updater. Do not uninstall 0.1.5 first.

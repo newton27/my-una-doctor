@@ -1,0 +1,10 @@
+MY UNA DOCTOR 0.1.6 -> 0.1.7
+
+Presentation / metadata consistency update.
+
+- Removes the stale hard-coded "v0.1.4" label from the Studio Safety Model.
+- Keeps the safety statement version-neutral so future maintenance releases do not display an obsolete number.
+- Synchronizes README, installation notes and marketplace metadata to 0.1.7.
+- Makes no change to diagnostic scan behavior.
+
+Use the proper UNA updater. Do not uninstall 0.1.6 first.

@@ -1,0 +1,21 @@
+MY UNA DOCTOR 0.1.9 -> 0.1.10
+================================
+
+PURPOSE
+-------
+Presentation/evidence refinement only. The validated 0.1.9 diagnostic and scoring logic is unchanged.
+
+CHANGES
+-------
+- Health impact and Repair required render as separate readable lines.
+- Placeholder-only Technical evidence disclosures are suppressed.
+- Meaningful technical evidence remains available.
+- Documentation and module version metadata advance to 0.1.10.
+
+SAFETY
+------
+This update remains diagnostic-only. It adds no repair, delete, rebuild or write behavior outside Doctor's existing scan-history record.
+
+INSTALLATION
+------------
+Apply this update to an installed My UNA Doctor 0.1.9 through UNA Studio. Do not uninstall the module first.
