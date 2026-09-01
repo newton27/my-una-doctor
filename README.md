@@ -1,55 +1,163 @@
 # My UNA Doctor
 
-**Studio-only UNA CMS health diagnostics**
+**Studio-only UNA CMS diagnostics and guarded repair framework**
 
-Version: **0.1.10 — Diagnostic Test Build**  
+Current validated checkpoint: **0.3.4**  
 Vendor: **NewtronJax**
 
-My UNA Doctor scans an UNA installation for common system, filesystem, database, module, notification, cron and log problems, assigns a health score, and records scan history inside UNA Studio.
+> **Diagnose first. Repair only when the evidence is clear.**
 
+My UNA Doctor analyzes UNA system health, module integrity, update readiness, database state, cron registrations, filesystem conditions and recent actionable logs. Newer 0.3.x builds add staged, evidence-driven repair controls with durable rollback state instead of performing blind automatic repairs.
 
+## 0.3.4 known-good checkpoint
 
-## 0.1.10 evidence presentation refinement
+Version 0.3.4 is preserved in Git as annotated tag **`v0.3.4`**.
 
-Version 0.1.10 keeps the 0.1.9 diagnostic and scoring engine unchanged while refining Studio evidence presentation. Health impact and Repair required now render as separate lines, and placeholder-only technical evidence trees are suppressed so routine healthy findings stay concise. Meaningful technical values remain available for support and diagnosis.
+Release verification before the tag was created:
 
-## 0.1.9 Storage & Media Inspector
+- 9 PHP files lint clean under PHP 8.3
+- 19 tracked / 19 current hashable Doctor files
+- 0 modified tracked
+- 0 missing tracked
+- 0 new/untracked
+- 0 UNA Studio changed files
+- source integrity: **clean**
 
-Version 0.1.9 adds a read-only Storage & Media section. It verifies relational integrity for UNA Albums and Timeline media: Albums media-to-source links, media-to-album links, album thumbnail source references, Timeline photo/video/file source relationships, and Timeline media-to-event relationships. It does not delete or rebuild media. Physical storage-backend verification is deliberately deferred until Doctor can identify local versus remote storage safely.
+Known-good commit:
 
-The Studio findings renderer now shows human-readable evidence summaries, affected IDs/relationships, health impact and whether repair is required, while preserving the detailed JSON under Technical evidence. The log classifier also understands verified stale Timeline media requests and treats residual transcoder cache rows as cache evidence rather than live content references.
+```text
+e2a12b20a066e0f61c2cc911a8b22fd4d51ce1da
+```
 
+Documentation added after the tag lives on `main`; the `v0.3.4` source checkpoint remains unchanged.
 
-## 0.1.8 health-aware log classification
+## Current architecture
 
-Version 0.1.8 distinguishes current health-impacting log failures from informational history. Verified Albums transcoder requests for source IDs that no longer exist and have no live Albums/media/thumbnail/resized references are classified as stale media requests and do not reduce the health score. Explicit Studio module-operation failures remain visible as administrative history instead of being treated as runtime site-health failures. Unknown or unverified transcoder/storage errors remain health-impacting.
+The guarded repair lifecycle is intentionally staged:
 
-## 0.1.7 presentation consistency update
+```text
+Scan
+  -> Detect
+  -> Preview
+  -> Preflight
+  -> Arm Plan
+  -> Explicit approval
+  -> Durable rollback journal
+  -> Repair Barrier 2
+  -> Protect verified runtime content
+  -> Validate
+  -> Separate update stage
+  -> Restore / merge planning
+  -> Roll back when required
+```
 
-Version 0.1.7 removes stale hard-coded release numbers from the Studio Safety Model and synchronizes the package documentation with UNA's installed module version. Diagnostic behavior is unchanged from 0.1.6.
+A successful preview or preflight does not itself authorize mutation.
 
-## 0.1.4 scan-quality correction
+## Repair Barrier 2
 
-- Warning/critical evidence is expanded by default and encoded with invalid UTF-8 substitution.
-- Cron findings now show the registered file, resolved path, job ID and enabled state.
-- Log analysis ignores backup/archive files, no longer counts generic uses of the word `Exception`, groups repeated signatures, and provides redacted sample lines.
-- Scan history JSON now survives malformed byte sequences in log evidence.
+Before supported runtime protection is allowed, Doctor establishes a three-part control barrier:
 
-## 0.1.4 first-test correction
+1. **Disable and verify UNA template-cache compression**
+2. **Enable UNA soft maintenance**
+3. **Pause only the verified generator cron**
 
-The Modules diagnostics page uses the internal route `module_health` and method `getModuleHealth()` so it does not override UNA Studio's inherited `BxDolStudioPage::getModules($bShowCustom = true, $bShowSystem = true)` helper.
+The compression step is critical. During testing, soft maintenance left Studio HTML available but `gzip_loader.php` returned HTTP 503, breaking compressed Studio styling. Disabling template-cache compression first causes Studio to use direct `/cache_public/...` assets and keeps the administrative recovery interface usable.
 
-## Safety model
+Disarm reverses the barrier safely: exact generator schedule first, then exact maintenance state, then exact original compression value, with independent verification at each stage.
 
-This build is deliberately diagnostic-only. Running a health scan reads the UNA environment and writes only My UNA Doctor's own scan-history row. It does not repair, delete, rewrite or alter UNA module registrations, notification handlers, cron jobs, configuration files or core source.
+See [Repair Barrier 2](docs/REPAIR-BARRIER-2.md).
 
-## Studio location
+## Guarded runtime protection
 
-After installation, open **Studio → My UNA Doctor** and choose **Run Full Health Scan**.
+Doctor can identify a module that is source-clean but whose update readiness is distorted by a large population of generated files inside its module directory.
+
+For a verified candidate, 0.3.4 can:
+
+- inventory the runtime tree immediately before mutation;
+- produce a deterministic protection fingerprint;
+- refuse symlinks, hardlinks and special files;
+- require a same-filesystem safety destination;
+- preserve runtime-root filesystem metadata;
+- atomically separate the whole generated runtime tree rather than moving thousands of files individually;
+- restore only legitimate tracked runtime files to the live module path;
+- verify the protected original independently;
+- recover the original runtime tree if protection fails;
+- restore a protected runtime tree back to the live module path;
+- plan post-update runtime merging without automatically overwriting collisions.
+
+The proven large-tree test contained **18,027 physical files** and **3,059,207,616 bytes** of runtime content.
+
+See [Guarded Runtime Protection](docs/RUNTIME-PROTECTION.md).
+
+## Module integrity and update readiness
+
+Doctor uses UNA Studio-compatible hashing semantics and separately reports:
+
+- tracked files,
+- current hashable files,
+- modified tracked files,
+- missing tracked files,
+- new/untracked files,
+- the final changed-file set UNA Studio would use for update readiness.
+
+`getModuleIntegritySnapshot()` exposes complete, untruncated integrity data for guarded planning and verification.
+
+Doctor does **not** silently rebaseline a third-party module merely to make an update warning disappear.
+
+## Durable repair journal
+
+Repair mutation begins only after the original state required for rollback has been persisted.
+
+Journal state tracks the repair lifecycle, including arming, runtime protection, runtime restoration and unresolved rollback conditions. An active or unresolved journal is itself a safety condition and blocks a new repair workflow.
+
+Repair state is kept separate from the protected third-party module content.
+
+## Safety boundaries
+
+My UNA Doctor intentionally fails closed when required evidence is incomplete or contradictory.
+
+0.3.4 does not automatically:
+
+- rewrite third-party checksum baselines;
+- start a module update merely because a repair is armed;
+- overwrite post-update runtime collisions;
+- repair findings whose ownership or intent is ambiguous;
+- ignore a failed rollback or unresolved journal;
+- alter unrelated cron registrations.
+
+Unknown integrity state is reported as unknown/warning rather than clean.
+
+## Diagnostic coverage
+
+The broader Doctor scanner includes checks for:
+
+- UNA/PHP compatibility and versions;
+- common PHP extensions;
+- writable UNA runtime directories;
+- disk-space safety;
+- database connectivity and schema conditions;
+- module registration and install metadata;
+- module file integrity and update readiness;
+- notification/alert registration integrity;
+- cron file references and ownership;
+- recent actionable UNA/PHP logs;
+- scan history;
+- supported Albums and Timeline media relationship integrity.
+
+## Documentation
+
+- [0.3.4 release checkpoint](docs/RELEASE-0.3.4.md)
+- [Repair Barrier 2](docs/REPAIR-BARRIER-2.md)
+- [Guarded Runtime Protection](docs/RUNTIME-PROTECTION.md)
+- [Changelog](CHANGELOG.md)
+- [Installation notes](INSTALLATION.txt)
+- [Marketplace notes](MARKETPLACE.txt)
+
+Historical 0.1.x update notes remain in the repository for development history.
 
 ## Package layout
 
-The installation ZIP begins with the UNA vendor/module folders:
+The UNA installation package uses the vendor/module hierarchy:
 
 ```text
 newton/
@@ -65,30 +173,8 @@ newton/
     └── request.php
 ```
 
-See **INSTALLATION.txt** before the first test installation.
+The Git repository may contain additional development documentation that is not required inside a production UNA module package.
 
-## v0.1.4 log-age diagnostics
+## Development rule
 
-- Parses individual UNA/PHP log-entry timestamps instead of treating a recently modified log file as if every line were recent.
-- Health score is affected by actionable entries from the last 24 hours; 1-7 day and historical entries remain visible as context.
-- Groups multiline UNA module-operation errors with their continuation/detail lines.
-- Normalizes timestamps, media IDs and volatile request parameters when grouping recurring signatures.
-- Expands log-tail inspection to 256 KiB while keeping the scan read-only.
-
-## Updating from 0.1.3
-
-Use the separate `My-UNA-Doctor-UPDATE-0.1.3-to-0.1.4.zip` through UNA's normal update workflow. The update package uses `version_from`/`version_to` and `BxDolStudioUpdater`; manual editing of `sys_modules.version` is no longer part of the normal update procedure.
-
-
-## UNA Marketplace / Studio Store artwork
-
-The package includes a root-level `cover.jpg` (1536×835), matching the module packaging convention used by the MasterGate reference. `template/images/icons/std-icon.svg` remains the Studio launcher icon. UNA Studio `store.php` retrieves product-detail popup data from the UNA Marketplace API, so a custom/unpublished module may still show “info can’t be loaded” until a marketplace product record exists for `my_una_doctor`.
-
-
-## 0.1.5 market presentation update
-
-For sites already on 0.1.4, use the dedicated 0.1.4 → 0.1.5 updater. This adds
-the root-level `cover.jpg` and marketplace package notes without downgrading or
-re-running an older updater. The UNA Studio Store details popup itself is backed
-by the UNA Marketplace service, so a remote Marketplace product record is still
-required for full product details to load.
+Treat `v0.3.4` as an immutable recovery/reference point. New development belongs on commits after that tag and should be linted, exercised, integrity-checked and deliberately rebaselined only when the changed files are known and reviewed.
