@@ -1215,6 +1215,26 @@ class MyUnaDoctorModule extends BxDolModule
         $sSoftMaintenance =
             (string)getParam('sys_maintenance_mode');
 
+        $iMaintenanceHtmlOptions =
+            (int)$this->_oDb->getOne(
+                "SELECT COUNT(*)
+                 FROM `sys_options`
+                 WHERE `name` = ?",
+                array('sys_maintenance_mode_html')
+            );
+
+        if ($iMaintenanceHtmlOptions !== 1) {
+            $aResult['error'] =
+                'UNA soft-maintenance HTML option is unavailable. Doctor cannot install the guarded maintenance landing page.';
+
+            return $aResult;
+        }
+
+        $sSoftMaintenanceHtml =
+            (string)getParam(
+                'sys_maintenance_mode_html'
+            );
+
         $sTemplateCompression =
             (string)getParam(
                 'sys_template_cache_compress_enable'
@@ -1232,6 +1252,15 @@ class MyUnaDoctorModule extends BxDolModule
 
             'soft_maintenance_enabled' =>
                 !empty($sSoftMaintenance),
+
+            'soft_maintenance_html_value' =>
+                $sSoftMaintenanceHtml,
+
+            'soft_maintenance_html_sha256' =>
+                hash(
+                    'sha256',
+                    $sSoftMaintenanceHtml
+                ),
 
             'template_cache_compress_value' =>
                 $sTemplateCompression,
@@ -1272,9 +1301,10 @@ class MyUnaDoctorModule extends BxDolModule
         );
 
         $aResult['planned_steps'] = array(
-            'Preserve the exact original maintenance and template-compression state.',
+            'Preserve the exact original maintenance HTML, maintenance switch and template-compression state.',
             'Disable UNA template cache compression so Studio CSS/JS use direct cache_public URLs.',
             'Verify the template-compression repair state before enabling maintenance.',
+            'If Doctor is activating maintenance, stage the self-contained My UNA Doctor landing page with a live countdown.',
             'Enable UNA soft maintenance only if it is currently off.',
             'Re-verify the exact discovered generator row.',
             'Pause only that row using the impossible schedule 0 0 31 2 *.',
@@ -1287,6 +1317,7 @@ class MyUnaDoctorModule extends BxDolModule
             'Restore the exact original generator schedule.',
             'Clear the sys_cron_jobs cache again.',
             'Restore the exact original soft-maintenance value.',
+            'Restore the exact original soft-maintenance HTML value.',
             'Restore the exact original template-cache compression value.',
         );
 
@@ -1308,6 +1339,11 @@ class MyUnaDoctorModule extends BxDolModule
                 . (string)$aCron['time']
                 . '|'
                 . $sSoftMaintenance
+                . '|'
+                . hash(
+                    'sha256',
+                    $sSoftMaintenanceHtml
+                )
                 . '|'
                 . $sTemplateCompression
             ),
@@ -1333,6 +1369,7 @@ class MyUnaDoctorModule extends BxDolModule
             'ok' => true,
             'cron_restored' => false,
             'maintenance_restored' => false,
+            'maintenance_html_restored' => false,
             'compression_restored' => false,
             'errors' => array(),
         );
@@ -1443,6 +1480,57 @@ class MyUnaDoctorModule extends BxDolModule
                 $aResult['ok'] = false;
                 $aResult['errors'][] =
                     'Soft-maintenance rollback could not be verified.';
+            }
+        }
+
+        /*
+         * Restore the exact previous soft-maintenance HTML only
+         * when this journal recorded it. 0.3.4 and older journals
+         * remain backward-compatible.
+         *
+         * Maintenance itself is restored first, so if Doctor
+         * originally enabled soft maintenance the public site is
+         * already available again before its temporary landing
+         * page is removed.
+         */
+        if (
+            $bRestoreMaintenance
+            && array_key_exists(
+                'soft_maintenance_html_value',
+                $aOriginalState
+            )
+        ) {
+            $sOriginalMaintenanceHtml =
+                (string)$aOriginalState[
+                    'soft_maintenance_html_value'
+                ];
+
+            setParam(
+                'sys_maintenance_mode_html',
+                $sOriginalMaintenanceHtml
+            );
+
+            $sStoredMaintenanceHtml =
+                (string)$this->_oDb->getOne(
+                    "SELECT `value`
+                     FROM `sys_options`
+                     WHERE `name` = ?
+                     LIMIT 1",
+                    array(
+                        'sys_maintenance_mode_html'
+                    )
+                );
+
+            if (
+                $sStoredMaintenanceHtml
+                === $sOriginalMaintenanceHtml
+            ) {
+                $aResult['maintenance_html_restored'] =
+                    true;
+            } else {
+                $aResult['ok'] = false;
+                $aResult['errors'][] =
+                    'Soft-maintenance HTML rollback could not be verified.';
             }
         }
 
@@ -6610,6 +6698,29 @@ class MyUnaDoctorModule extends BxDolModule
                     array('sys_maintenance_mode')
                 );
 
+            $sExpectedOriginalMaintenanceHtml =
+                array_key_exists(
+                    'soft_maintenance_html_value',
+                    $aOriginalState
+                )
+                    ? (string)$aOriginalState[
+                        'soft_maintenance_html_value'
+                    ]
+                    : null;
+
+            $sVerifyMaintenanceHtml =
+                $sExpectedOriginalMaintenanceHtml !== null
+                    ? (string)$this->_oDb->getOne(
+                        "SELECT `value`
+                         FROM `sys_options`
+                         WHERE `name` = ?
+                         LIMIT 1",
+                        array(
+                            'sys_maintenance_mode_html'
+                        )
+                    )
+                    : null;
+
             $sExpectedOriginalCompression = '';
 
             $sVerifyCompression = '';
@@ -6645,6 +6756,11 @@ class MyUnaDoctorModule extends BxDolModule
                 $sVerifyMaintenance
                     === $sExpectedOriginalMaintenance
                 && (
+                    $sExpectedOriginalMaintenanceHtml === null
+                    || $sVerifyMaintenanceHtml
+                        === $sExpectedOriginalMaintenanceHtml
+                )
+                && (
                     !$bHasCompressionState
                     || $sVerifyCompression
                         === $sExpectedOriginalCompression
@@ -6672,6 +6788,13 @@ class MyUnaDoctorModule extends BxDolModule
                 'changes_applied' => true,
                 'maintenance_value' =>
                     $sVerifyMaintenance,
+                'maintenance_html_sha256' =>
+                    $sVerifyMaintenanceHtml === null
+                        ? null
+                        : hash(
+                            'sha256',
+                            $sVerifyMaintenanceHtml
+                        ),
                 'compression_value' =>
                     $bHasCompressionState
                         ? $sVerifyCompression
@@ -6841,6 +6964,23 @@ class MyUnaDoctorModule extends BxDolModule
 
         if (
             !array_key_exists(
+                'soft_maintenance_html_value',
+                $aOriginalState
+            )
+        ) {
+            $aResult['error'] =
+                'The approved Arm Plan does not contain the original soft-maintenance HTML state.';
+
+            return $aResult;
+        }
+
+        $sOriginalMaintenanceHtml =
+            (string)$aOriginalState[
+                'soft_maintenance_html_value'
+            ];
+
+        if (
+            !array_key_exists(
                 'template_cache_compress_value',
                 $aOriginalState
             )
@@ -6872,6 +7012,27 @@ class MyUnaDoctorModule extends BxDolModule
         if ($sLiveMaintenance !== $sOriginalMaintenance) {
             $aResult['error'] =
                 'Soft-maintenance state changed after approval.';
+
+            return $aResult;
+        }
+
+        $sLiveMaintenanceHtml =
+            (string)$this->_oDb->getOne(
+                "SELECT `value`
+                 FROM `sys_options`
+                 WHERE `name` = ?
+                 LIMIT 1",
+                array(
+                    'sys_maintenance_mode_html'
+                )
+            );
+
+        if (
+            $sLiveMaintenanceHtml
+            !== $sOriginalMaintenanceHtml
+        ) {
+            $aResult['error'] =
+                'Soft-maintenance HTML changed after approval.';
 
             return $aResult;
         }
@@ -6972,6 +7133,53 @@ class MyUnaDoctorModule extends BxDolModule
             return $aResult;
         }
 
+        $iMaintenanceEstimateSeconds =
+            2 * 60 * 60;
+
+        $iMaintenanceStartedAt = time();
+        $iMaintenanceEtaAt =
+            $iMaintenanceStartedAt
+            + $iMaintenanceEstimateSeconds;
+
+        $bDoctorMaintenanceLanding =
+            $sOriginalMaintenance === '';
+
+        $sExpectedMaintenanceHtml =
+            $sOriginalMaintenanceHtml;
+
+        if ($bDoctorMaintenanceLanding) {
+            require_once(
+                BX_DIRECTORY_PATH_MODULES
+                . $this->_aModule['path']
+                . 'classes/MyUnaDoctorMaintenance.php'
+            );
+
+            $sExpectedMaintenanceHtml =
+                MyUnaDoctorMaintenance::buildPage(
+                    $iMaintenanceStartedAt,
+                    $iMaintenanceEtaAt
+                );
+
+            if (
+                $sExpectedMaintenanceHtml === ''
+                || strpos(
+                    $sExpectedMaintenanceHtml,
+                    'id="mud-maintenance"'
+                ) === false
+            ) {
+                $aResult['error'] =
+                    'Doctor maintenance landing page could not be generated safely.';
+
+                return $aResult;
+            }
+        }
+
+        $sExpectedMaintenanceHtmlSha256 =
+            hash(
+                'sha256',
+                $sExpectedMaintenanceHtml
+            );
+
         $aPlannedState = array(
             'template_cache_compress_target' =>
                 '',
@@ -6980,6 +7188,19 @@ class MyUnaDoctorModule extends BxDolModule
                 $sOriginalMaintenance !== ''
                     ? $sOriginalMaintenance
                     : 'on',
+
+            'maintenance_landing' => array(
+                'doctor_owned' =>
+                    $bDoctorMaintenanceLanding,
+                'started_at' =>
+                    $iMaintenanceStartedAt,
+                'eta_at' =>
+                    $iMaintenanceEtaAt,
+                'estimate_seconds' =>
+                    $iMaintenanceEstimateSeconds,
+                'html_sha256' =>
+                    $sExpectedMaintenanceHtmlSha256,
+            ),
 
             'generator' => array(
                 'id' => $iCronId,
@@ -7092,6 +7313,7 @@ class MyUnaDoctorModule extends BxDolModule
         };
 
         $bCompressionMutationAttempted = false;
+        $bMaintenanceHtmlMutationAttempted = false;
         $bMaintenanceMutationAttempted = false;
         $bCronMutationAttempted = false;
 
@@ -7166,6 +7388,66 @@ class MyUnaDoctorModule extends BxDolModule
             );
 
             /*
+             * Stage Doctor's self-contained public landing page
+             * only when Doctor itself is about to activate soft
+             * maintenance. Existing administrator maintenance is
+             * treated as externally owned and is not replaced.
+             */
+            if ($bDoctorMaintenanceLanding) {
+                $bMaintenanceHtmlMutationAttempted =
+                    true;
+
+                setParam(
+                    'sys_maintenance_mode_html',
+                    $sExpectedMaintenanceHtml
+                );
+            }
+
+            $sVerifyMaintenanceHtml =
+                (string)$this->_oDb->getOne(
+                    "SELECT `value`
+                     FROM `sys_options`
+                     WHERE `name` = ?
+                     LIMIT 1",
+                    array(
+                        'sys_maintenance_mode_html'
+                    )
+                );
+
+            if (
+                $sVerifyMaintenanceHtml
+                !== $sExpectedMaintenanceHtml
+            ) {
+                throw new RuntimeException(
+                    'Doctor maintenance landing page could not be staged and verified.'
+                );
+            }
+
+            $this->requireRepairJournalUpdate(
+                $iJournalId,
+                array(
+                    'status' => 'arming',
+                    'result_json' => $encode(
+                        array(
+                            'phase' =>
+                                'maintenance_page_staged',
+                            'maintenance_html_sha256' =>
+                                hash(
+                                    'sha256',
+                                    $sVerifyMaintenanceHtml
+                                ),
+                            'maintenance_started_at' =>
+                                $iMaintenanceStartedAt,
+                            'maintenance_eta_at' =>
+                                $iMaintenanceEtaAt,
+                            'changes_applied' =>
+                                $bMaintenanceHtmlMutationAttempted,
+                        )
+                    ),
+                )
+            );
+
+            /*
              * Enable soft maintenance only if it was originally
              * disabled. Preserve any existing non-empty value.
              */
@@ -7212,8 +7494,18 @@ class MyUnaDoctorModule extends BxDolModule
                                 'maintenance_enabled',
                             'maintenance_value' =>
                                 $sVerifyMaintenance,
+                            'maintenance_html_sha256' =>
+                                hash(
+                                    'sha256',
+                                    $sVerifyMaintenanceHtml
+                                ),
+                            'maintenance_started_at' =>
+                                $iMaintenanceStartedAt,
+                            'maintenance_eta_at' =>
+                                $iMaintenanceEtaAt,
                             'changes_applied' =>
-                                $bMaintenanceMutationAttempted,
+                                $bMaintenanceMutationAttempted
+                                || $bMaintenanceHtmlMutationAttempted,
                         )
                     ),
                 )
@@ -7331,6 +7623,17 @@ class MyUnaDoctorModule extends BxDolModule
                     array('sys_maintenance_mode')
                 );
 
+            $sFinalMaintenanceHtml =
+                (string)$this->_oDb->getOne(
+                    "SELECT `value`
+                     FROM `sys_options`
+                     WHERE `name` = ?
+                     LIMIT 1",
+                    array(
+                        'sys_maintenance_mode_html'
+                    )
+                );
+
             $sFinalCompression =
                 (string)$this->_oDb->getOne(
                     "SELECT `value`
@@ -7355,6 +7658,8 @@ class MyUnaDoctorModule extends BxDolModule
                 $sFinalCompression !== ''
                 || $sFinalMaintenance
                     !== $sExpectedMaintenance
+                || $sFinalMaintenanceHtml
+                    !== $sExpectedMaintenanceHtml
                 || empty($aFinalCron)
                 || (string)$aFinalCron['time']
                     !== $sPauseSchedule
@@ -7377,6 +7682,15 @@ class MyUnaDoctorModule extends BxDolModule
                 'changes_applied' => true,
                 'maintenance_value' =>
                     $sFinalMaintenance,
+                'maintenance_html_sha256' =>
+                    hash(
+                        'sha256',
+                        $sFinalMaintenanceHtml
+                    ),
+                'maintenance_started_at' =>
+                    $iMaintenanceStartedAt,
+                'maintenance_eta_at' =>
+                    $iMaintenanceEtaAt,
                 'compression_value' =>
                     $sFinalCompression,
                 'generator_id' =>
