@@ -41,6 +41,455 @@ CREATE TABLE IF NOT EXISTS `my_una_doctor_repairs` (
     KEY `updated` (`updated`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+
+
+CREATE TABLE IF NOT EXISTS `my_una_doctor_repair_knowledge` (
+    `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+    `knowledge_key` char(64) NOT NULL,
+    `module` varchar(128) NOT NULL,
+    `module_version` varchar(64) NOT NULL,
+    `file` varchar(512) NOT NULL,
+    `reference_md5` char(32) NOT NULL,
+    `approved_live_md5` char(32) NOT NULL,
+    `repair_type` varchar(64) NOT NULL DEFAULT 'local_fix',
+    `reason` text NOT NULL,
+    `reference_sha256` char(64) NOT NULL DEFAULT '',
+    `reference_filename` varchar(255) NOT NULL DEFAULT '',
+    `evidence_json` mediumtext NOT NULL,
+    `enabled` tinyint(3) unsigned NOT NULL DEFAULT 1,
+    `created` int(11) unsigned NOT NULL DEFAULT 0,
+    `updated` int(11) unsigned NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `knowledge_key` (`knowledge_key`),
+    KEY `module_version` (`module`, `module_version`),
+    KEY `enabled` (`enabled`),
+    KEY `updated` (`updated`)
+) ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_general_ci;
+
+
+-- MY UNA DOCTOR SETTINGS
+
+SET @iDoctorOptionsTypeId = (
+    SELECT `id`
+    FROM `sys_options_types`
+    WHERE `name` = @sName
+    LIMIT 1
+);
+
+INSERT INTO `sys_options_types`
+    (`group`, `name`, `caption`, `icon`, `order`)
+SELECT
+    'modules',
+    @sName,
+    '_my_una_doctor',
+    CONCAT(
+        @sName,
+        '@modules/',
+        @sPath,
+        '|std-icon.svg'
+    ),
+    COALESCE(
+        (
+            SELECT MAX(`order`) + 1
+            FROM `sys_options_types`
+            WHERE `group` = 'modules'
+        ),
+        1
+    )
+WHERE @iDoctorOptionsTypeId IS NULL;
+
+SET @iDoctorOptionsTypeId = (
+    SELECT `id`
+    FROM `sys_options_types`
+    WHERE `name` = @sName
+    LIMIT 1
+);
+
+SET @iDoctorOptionsCategoryId = (
+    SELECT `id`
+    FROM `sys_options_categories`
+    WHERE `type_id` = @iDoctorOptionsTypeId
+      AND `name` = @sName
+    LIMIT 1
+);
+
+INSERT INTO `sys_options_categories`
+    (`type_id`, `name`, `caption`, `hidden`, `order`)
+SELECT
+    @iDoctorOptionsTypeId,
+    @sName,
+    '_my_una_doctor_settings',
+    0,
+    1
+WHERE @iDoctorOptionsCategoryId IS NULL;
+
+SET @iDoctorOptionsCategoryId = (
+    SELECT `id`
+    FROM `sys_options_categories`
+    WHERE `type_id` = @iDoctorOptionsTypeId
+      AND `name` = @sName
+    LIMIT 1
+);
+
+INSERT INTO `sys_options`
+    (
+        `category_id`,
+        `name`,
+        `caption`,
+        `info`,
+        `value`,
+        `type`,
+        `extra`,
+        `check`,
+        `check_params`,
+        `check_error`,
+        `order`
+    )
+SELECT
+    @iDoctorOptionsCategoryId,
+    'my_una_doctor_show_activity',
+    '_my_una_doctor_opt_show_activity',
+    '_my_una_doctor_opt_show_activity_info',
+    'on',
+    'checkbox',
+    '',
+    '',
+    '',
+    '',
+    1
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM `sys_options`
+    WHERE `name` = 'my_una_doctor_show_activity'
+);
+
+INSERT INTO `sys_options`
+    (
+        `category_id`,
+        `name`,
+        `caption`,
+        `info`,
+        `value`,
+        `type`,
+        `extra`,
+        `check`,
+        `check_params`,
+        `check_error`,
+        `order`
+    )
+SELECT
+    @iDoctorOptionsCategoryId,
+    'my_una_doctor_expand_technical_details',
+    '_my_una_doctor_opt_expand_technical_details',
+    '_my_una_doctor_opt_expand_technical_details_info',
+    '',
+    'checkbox',
+    '',
+    '',
+    '',
+    '',
+    2
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM `sys_options`
+    WHERE `name` =
+        'my_una_doctor_expand_technical_details'
+);
+
+INSERT INTO `sys_options`
+    (
+        `category_id`,
+        `name`,
+        `caption`,
+        `info`,
+        `value`,
+        `type`,
+        `extra`,
+        `check`,
+        `check_params`,
+        `check_error`,
+        `order`
+    )
+SELECT
+    @iDoctorOptionsCategoryId,
+    'my_una_doctor_work_cycle_size',
+    '_my_una_doctor_opt_work_cycle_size',
+    '_my_una_doctor_opt_work_cycle_size_info',
+    '30',
+    'select',
+    '10,20,30',
+    '',
+    '',
+    '',
+    3
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM `sys_options`
+    WHERE `name` =
+        'my_una_doctor_work_cycle_size'
+);
+
+
+
+-- Maintenance page personalization
+
+INSERT INTO `sys_options`
+    (
+        `category_id`,
+        `name`,
+        `caption`,
+        `info`,
+        `value`,
+        `type`,
+        `extra`,
+        `check`,
+        `check_params`,
+        `check_error`,
+        `order`
+    )
+SELECT
+    @iDoctorOptionsCategoryId,
+    'my_una_doctor_maintenance_show_header',
+    '_my_una_doctor_opt_maintenance_show_header',
+    '_my_una_doctor_opt_maintenance_show_header_info',
+    'on',
+    'checkbox',
+    '',
+    '',
+    '',
+    '',
+    4
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM `sys_options`
+    WHERE `name` =
+        'my_una_doctor_maintenance_show_header'
+);
+
+INSERT INTO `sys_options`
+    (
+        `category_id`,
+        `name`,
+        `caption`,
+        `info`,
+        `value`,
+        `type`,
+        `extra`,
+        `check`,
+        `check_params`,
+        `check_error`,
+        `order`
+    )
+SELECT
+    @iDoctorOptionsCategoryId,
+    'my_una_doctor_maintenance_show_footer',
+    '_my_una_doctor_opt_maintenance_show_footer',
+    '_my_una_doctor_opt_maintenance_show_footer_info',
+    'on',
+    'checkbox',
+    '',
+    '',
+    '',
+    '',
+    5
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM `sys_options`
+    WHERE `name` =
+        'my_una_doctor_maintenance_show_footer'
+);
+
+INSERT INTO `sys_options`
+    (
+        `category_id`,
+        `name`,
+        `caption`,
+        `info`,
+        `value`,
+        `type`,
+        `extra`,
+        `check`,
+        `check_params`,
+        `check_error`,
+        `order`
+    )
+SELECT
+    @iDoctorOptionsCategoryId,
+    'my_una_doctor_maintenance_heading',
+    '_my_una_doctor_opt_maintenance_heading',
+    '_my_una_doctor_opt_maintenance_heading_info',
+    'Scheduled Maintenance in Progress',
+    'text',
+    '',
+    '',
+    '',
+    '',
+    6
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM `sys_options`
+    WHERE `name` =
+        'my_una_doctor_maintenance_heading'
+);
+
+INSERT INTO `sys_options`
+    (
+        `category_id`,
+        `name`,
+        `caption`,
+        `info`,
+        `value`,
+        `type`,
+        `extra`,
+        `check`,
+        `check_params`,
+        `check_error`,
+        `order`
+    )
+SELECT
+    @iDoctorOptionsCategoryId,
+    'my_una_doctor_maintenance_message',
+    '_my_una_doctor_opt_maintenance_message',
+    '_my_una_doctor_opt_maintenance_message_info',
+    'Our site is temporarily unavailable while My UNA Doctor performs a verified maintenance workflow. The public site will return automatically when maintenance is complete.',
+    'text',
+    '',
+    '',
+    '',
+    '',
+    7
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM `sys_options`
+    WHERE `name` =
+        'my_una_doctor_maintenance_message'
+);
+
+INSERT INTO `sys_options`
+    (
+        `category_id`,
+        `name`,
+        `caption`,
+        `info`,
+        `value`,
+        `type`,
+        `extra`,
+        `check`,
+        `check_params`,
+        `check_error`,
+        `order`
+    )
+SELECT
+    @iDoctorOptionsCategoryId,
+    'my_una_doctor_maintenance_patience',
+    '_my_una_doctor_opt_maintenance_patience',
+    '_my_una_doctor_opt_maintenance_patience_info',
+    'We appreciate your patience.',
+    'text',
+    '',
+    '',
+    '',
+    '',
+    8
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM `sys_options`
+    WHERE `name` =
+        'my_una_doctor_maintenance_patience'
+);
+
+INSERT INTO `sys_options`
+    (
+        `category_id`,
+        `name`,
+        `caption`,
+        `info`,
+        `value`,
+        `type`,
+        `extra`,
+        `check`,
+        `check_params`,
+        `check_error`,
+        `order`
+    )
+SELECT
+    @iDoctorOptionsCategoryId,
+    'my_una_doctor_maintenance_return_message',
+    '_my_una_doctor_opt_maintenance_return_message',
+    '_my_una_doctor_opt_maintenance_return_message_info',
+    'Estimated return time is counting down live.',
+    'text',
+    '',
+    '',
+    '',
+    '',
+    9
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM `sys_options`
+    WHERE `name` =
+        'my_una_doctor_maintenance_return_message'
+);
+
+INSERT INTO `sys_options`
+    (
+        `category_id`,
+        `name`,
+        `caption`,
+        `info`,
+        `value`,
+        `type`,
+        `extra`,
+        `check`,
+        `check_params`,
+        `check_error`,
+        `order`
+    )
+SELECT
+    @iDoctorOptionsCategoryId,
+    'my_una_doctor_maintenance_footer_message',
+    '_my_una_doctor_opt_maintenance_footer_message',
+    '_my_una_doctor_opt_maintenance_footer_message_info',
+    'Thank you for your patience while the verified workflow completes.',
+    'text',
+    '',
+    '',
+    '',
+    '',
+    10
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM `sys_options`
+    WHERE `name` =
+        'my_una_doctor_maintenance_footer_message'
+);
+
+
+INSERT INTO `sys_options`
+(
+    `category_id`,`name`,`caption`,`info`,`value`,
+    `type`,`extra`,`check`,`check_params`,`check_error`,`order`
+)
+SELECT
+    @iDoctorOptionsCategoryId,
+    'my_una_doctor_use_maintenance_page',
+    '_my_una_doctor_opt_use_maintenance_page',
+    '_my_una_doctor_opt_use_maintenance_page_info',
+    'on',
+    'checkbox',
+    '',
+    '',
+    '',
+    '',
+    11
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM `sys_options`
+    WHERE `name` = 'my_una_doctor_use_maintenance_page'
+);
+
 -- STUDIO PAGE & WIDGET
 
 INSERT INTO `sys_std_pages`(`index`, `name`, `header`, `caption`, `icon`) VALUES
@@ -53,3 +502,32 @@ INSERT INTO `sys_std_widgets` (`page_id`, `module`, `type`, `url`, `click`, `ico
 (@iPageId, @sName, 'manage', CONCAT('{url_studio}module.php?name=', @sName), '', CONCAT(@sName, '@modules/', @sPath, '|std-icon.svg'), '_my_una_doctor', '', 'a:4:{s:6:"module";s:6:"system";s:6:"method";s:11:"get_actions";s:6:"params";a:0:{}s:5:"class";s:18:"TemplStudioModules";}');
 INSERT INTO `sys_std_pages_widgets` (`page_id`, `widget_id`, `order`) VALUES
 (@iParentPageId, LAST_INSERT_ID(), IF(ISNULL(@iParentPageOrder), 1, @iParentPageOrder + 1));
+
+-- Persistent Module Reference Library.
+-- Reference ZIPs are stored separately under protected Doctor-owned storage.
+CREATE TABLE IF NOT EXISTS `my_una_doctor_reference_library` (
+    `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+    `module_name` varchar(64) NOT NULL,
+    `module_title` varchar(255) NOT NULL DEFAULT '',
+    `vendor` varchar(255) NOT NULL DEFAULT '',
+    `reference_version` varchar(64) NOT NULL DEFAULT '',
+    `original_filename` varchar(255) NOT NULL DEFAULT '',
+    `reference_sha256` char(64) NOT NULL,
+    `storage_relpath` varchar(255) NOT NULL,
+    `archive_files` int(10) unsigned NOT NULL DEFAULT 0,
+    `archive_bytes` bigint(20) unsigned NOT NULL DEFAULT 0,
+    `reference_files` int(10) unsigned NOT NULL DEFAULT 0,
+    `first_session_id` varchar(64) NOT NULL,
+    `latest_session_id` varchar(64) NOT NULL,
+    `comparison_count` int(10) unsigned NOT NULL DEFAULT 1,
+    `first_seen_utc` datetime DEFAULT NULL,
+    `last_seen_utc` datetime DEFAULT NULL,
+    `baseline_authenticity` varchar(32) NOT NULL DEFAULT '',
+    `integrity_status` varchar(32) NOT NULL DEFAULT 'verified',
+    `created_at` int(10) unsigned NOT NULL DEFAULT 0,
+    `updated_at` int(10) unsigned NOT NULL DEFAULT 0,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `reference_sha256` (`reference_sha256`),
+    KEY `module_version` (`module_name`, `reference_version`),
+    KEY `latest_session` (`latest_session_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

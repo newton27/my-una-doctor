@@ -36,6 +36,418 @@ class MyUnaDoctorModule extends BxDolModule
     }
 
 
+    public function compareReferencePackageUpload(
+        array $aUpload
+    ) {
+        $sFile =
+            BX_DIRECTORY_PATH_MODULES
+            . 'newton/my_una_doctor/classes/'
+            . 'MyUnaDoctorReferencePackage.php';
+
+        if (!is_file($sFile)) {
+            return array(
+                'ok' => false,
+                'changes_applied' => false,
+                'error' =>
+                    'Reference package comparison engine is missing.',
+            );
+        }
+
+        require_once $sFile;
+
+        $oComparator =
+            new MyUnaDoctorReferencePackage($this);
+
+        $aResult =
+            $oComparator->compareUpload(
+                $aUpload
+            );
+
+        if (empty($aResult['ok']))
+            return $aResult;
+
+        $oLibrary =
+            $this->getModuleReferenceLibraryManager();
+
+        if (!$oLibrary) {
+            $aResult['library'] = array(
+                'ok' => false,
+                'saved' => false,
+                'error' =>
+                    'The comparison succeeded, but the persistent Module Reference Library is unavailable.',
+            );
+
+            return $aResult;
+        }
+
+        $aResult['library'] =
+            $oLibrary
+                ->promoteComparisonResult(
+                    $aResult
+                );
+
+        return $aResult;
+    }
+
+
+
+    /**
+     * Return the read-only persistent Module Reference Library
+     * manager.
+     */
+
+    /**
+     * Re-run the normal comparison engine against one saved,
+     * immutable Module Reference Library ZIP.
+     *
+     * Comparison only. No installed module file is modified.
+     */
+    public function compareSavedModuleReference(
+        $sSha256
+    ) {
+        $sSha256 =
+            strtolower(
+                trim((string)$sSha256)
+            );
+
+        $aItem =
+            $this->getModuleReferenceLibraryItem(
+                $sSha256
+            );
+
+        if (
+            empty($aItem)
+            || empty(
+                $aItem['library_verified']
+            )
+        ) {
+            return array(
+                'ok' => false,
+                'changes_applied' => false,
+                'error' =>
+                    'The saved reference did not pass current Reference Library verification.',
+            );
+        }
+
+        $sRelPath =
+            (string)(
+                $aItem['storage_relpath']
+                ?? ''
+            );
+
+        $sFullPath =
+            rtrim(
+                BX_DIRECTORY_PATH_ROOT,
+                DIRECTORY_SEPARATOR
+            )
+            . DIRECTORY_SEPARATOR
+            . str_replace(
+                '/',
+                DIRECTORY_SEPARATOR,
+                $sRelPath
+            );
+
+        $sComparator =
+            BX_DIRECTORY_PATH_MODULES
+            . 'newton/my_una_doctor/classes/'
+            . 'MyUnaDoctorReferencePackage.php';
+
+        if (!is_file($sComparator)) {
+            return array(
+                'ok' => false,
+                'changes_applied' => false,
+                'error' =>
+                    'Reference package comparison engine is missing.',
+            );
+        }
+
+        require_once $sComparator;
+
+        $oComparator =
+            new MyUnaDoctorReferencePackage(
+                $this
+            );
+
+        $aResult =
+            $oComparator
+                ->compareStoredReferenceFile(
+                    $sFullPath,
+                    (string)(
+                        $aItem[
+                            'original_filename'
+                        ]
+                        ?? 'reference.zip'
+                    ),
+                    $sSha256
+                );
+
+        if (empty($aResult['ok']))
+            return $aResult;
+
+        $sSessionId =
+            (string)(
+                $aResult['evidence'][
+                    'session_id'
+                ]
+                ?? ''
+            );
+
+        $sBaseline =
+            (string)(
+                $aResult['baseline'][
+                    'authenticity'
+                ]
+                ?? ''
+            );
+
+        $oLibrary =
+            $this
+                ->getModuleReferenceLibraryManager();
+
+        $bRecorded =
+            $oLibrary
+                ? $oLibrary->recordComparison(
+                    $sSha256,
+                    $sSessionId,
+                    $sBaseline
+                )
+                : false;
+
+        $aResult['library'] = array(
+            'reference_sha256' =>
+                $sSha256,
+
+            'history_recorded' =>
+                (bool)$bRecorded,
+
+            'source' =>
+                'saved_reference_library',
+        );
+
+        return $aResult;
+    }
+
+
+    protected function getModuleReferenceLibraryManager()
+    {
+        $sFile =
+            BX_DIRECTORY_PATH_MODULES
+            . 'newton/my_una_doctor/classes/'
+            . 'MyUnaDoctorReferenceLibrary.php';
+
+        if (!is_file($sFile))
+            return null;
+
+        require_once $sFile;
+
+        if (!class_exists(
+            'MyUnaDoctorReferenceLibrary'
+        )) {
+            return null;
+        }
+
+        return new MyUnaDoctorReferenceLibrary(
+            $this
+        );
+    }
+
+
+    /**
+     * Return every saved Module Reference Library item
+     * with its current cryptographic verification state.
+     *
+     * Read-only.
+     */
+    public function getModuleReferenceLibrary()
+    {
+        $oLibrary =
+            $this->getModuleReferenceLibraryManager();
+
+        if (!$oLibrary)
+            return array();
+
+        return $oLibrary->getAll();
+    }
+
+
+    /**
+     * Return one saved reference by immutable SHA-256.
+     *
+     * Read-only.
+     */
+    public function getModuleReferenceLibraryItem(
+        $sSha256
+    ) {
+        $oLibrary =
+            $this->getModuleReferenceLibraryManager();
+
+        if (!$oLibrary)
+            return array();
+
+        return $oLibrary->getBySha256(
+            $sSha256
+        );
+    }
+
+
+    /**
+     * Return aggregate Module Reference Library status.
+     *
+     * Read-only.
+     */
+    public function getModuleReferenceLibrarySummary()
+    {
+        $oLibrary =
+            $this->getModuleReferenceLibraryManager();
+
+        if (!$oLibrary) {
+            return array(
+                'total' => 0,
+                'verified' => 0,
+                'failed' => 0,
+                'module_count' => 0,
+                'modules' => array(),
+            );
+        }
+
+        return $oLibrary->getSummary();
+    }
+
+
+    protected function getLocalRepairKnowledgeManager()
+    {
+        $sFile =
+            BX_DIRECTORY_PATH_MODULES
+            . 'newton/my_una_doctor/classes/'
+            . 'MyUnaDoctorRepairKnowledge.php';
+
+        if (!is_file($sFile))
+            return null;
+
+        require_once $sFile;
+
+        return new MyUnaDoctorRepairKnowledge(
+            $this
+        );
+    }
+
+
+    public function saveLocalRepairKnowledge(
+        array $aData
+    ) {
+        $oManager =
+            $this->getLocalRepairKnowledgeManager();
+
+        if (!$oManager) {
+            return array(
+                'ok' => false,
+                'saved' => false,
+                'error' =>
+                    'Local Repair Knowledge backend is missing.',
+            );
+        }
+
+        return $oManager->save($aData);
+    }
+
+
+    public function findLocalRepairKnowledge(
+        $sModule,
+        $sVersion,
+        $sFile,
+        $sReferenceMd5,
+        $sLiveMd5
+    ) {
+        $oManager =
+            $this->getLocalRepairKnowledgeManager();
+
+        if (!$oManager)
+            return array();
+
+        return $oManager->findExact(
+            $sModule,
+            $sVersion,
+            $sFile,
+            $sReferenceMd5,
+            $sLiveMd5
+        );
+    }
+
+
+    public function getLocalRepairKnowledge(
+        $sModule = ''
+    ) {
+        $oManager =
+            $this->getLocalRepairKnowledgeManager();
+
+        if (!$oManager)
+            return array();
+
+        return $oManager->getAll(
+            (string)$sModule
+        );
+    }
+
+
+    public function getLocalRepairKnowledgeWithStatus(
+        $sModule = ''
+    ) {
+        $oManager =
+            $this->getLocalRepairKnowledgeManager();
+
+        if (!$oManager)
+            return array();
+
+        return $oManager->getAllWithStatus(
+            (string)$sModule
+        );
+    }
+
+
+    public function setLocalRepairKnowledgeEnabled(
+        $iId,
+        $bEnabled
+    ) {
+        $oManager =
+            $this->getLocalRepairKnowledgeManager();
+
+        if (!$oManager) {
+            return array(
+                'ok' => false,
+                'knowledge_changed' => false,
+                'error' =>
+                    'Local Repair Knowledge backend is missing.',
+            );
+        }
+
+        return $oManager->setEnabled(
+            (int)$iId,
+            (bool)$bEnabled
+        );
+    }
+
+
+    public function deleteLocalRepairKnowledge(
+        $iId
+    ) {
+        $oManager =
+            $this->getLocalRepairKnowledgeManager();
+
+        if (!$oManager) {
+            return array(
+                'ok' => false,
+                'knowledge_changed' => false,
+                'error' =>
+                    'Local Repair Knowledge backend is missing.',
+            );
+        }
+
+        return $oManager->deleteRecord(
+            (int)$iId
+        );
+    }
+
+
     public function getRepairPreview($sRule, $sModule = '')
     {
         $sRule = trim((string)$sRule);
@@ -1215,6 +1627,26 @@ class MyUnaDoctorModule extends BxDolModule
         $sSoftMaintenance =
             (string)getParam('sys_maintenance_mode');
 
+        $iMaintenanceHtmlOptions =
+            (int)$this->_oDb->getOne(
+                "SELECT COUNT(*)
+                 FROM `sys_options`
+                 WHERE `name` = ?",
+                array('sys_maintenance_mode_html')
+            );
+
+        if ($iMaintenanceHtmlOptions !== 1) {
+            $aResult['error'] =
+                'UNA soft-maintenance HTML option is unavailable. Doctor cannot install the guarded maintenance landing page.';
+
+            return $aResult;
+        }
+
+        $sSoftMaintenanceHtml =
+            (string)getParam(
+                'sys_maintenance_mode_html'
+            );
+
         $sTemplateCompression =
             (string)getParam(
                 'sys_template_cache_compress_enable'
@@ -1232,6 +1664,15 @@ class MyUnaDoctorModule extends BxDolModule
 
             'soft_maintenance_enabled' =>
                 !empty($sSoftMaintenance),
+
+            'soft_maintenance_html_value' =>
+                $sSoftMaintenanceHtml,
+
+            'soft_maintenance_html_sha256' =>
+                hash(
+                    'sha256',
+                    $sSoftMaintenanceHtml
+                ),
 
             'template_cache_compress_value' =>
                 $sTemplateCompression,
@@ -1272,9 +1713,10 @@ class MyUnaDoctorModule extends BxDolModule
         );
 
         $aResult['planned_steps'] = array(
-            'Preserve the exact original maintenance and template-compression state.',
+            'Preserve the exact original maintenance HTML, maintenance switch and template-compression state.',
             'Disable UNA template cache compression so Studio CSS/JS use direct cache_public URLs.',
             'Verify the template-compression repair state before enabling maintenance.',
+            'If Doctor is activating maintenance, stage the self-contained My UNA Doctor landing page with a live countdown.',
             'Enable UNA soft maintenance only if it is currently off.',
             'Re-verify the exact discovered generator row.',
             'Pause only that row using the impossible schedule 0 0 31 2 *.',
@@ -1287,6 +1729,7 @@ class MyUnaDoctorModule extends BxDolModule
             'Restore the exact original generator schedule.',
             'Clear the sys_cron_jobs cache again.',
             'Restore the exact original soft-maintenance value.',
+            'Restore the exact original soft-maintenance HTML value.',
             'Restore the exact original template-cache compression value.',
         );
 
@@ -1308,6 +1751,11 @@ class MyUnaDoctorModule extends BxDolModule
                 . (string)$aCron['time']
                 . '|'
                 . $sSoftMaintenance
+                . '|'
+                . hash(
+                    'sha256',
+                    $sSoftMaintenanceHtml
+                )
                 . '|'
                 . $sTemplateCompression
             ),
@@ -1333,6 +1781,7 @@ class MyUnaDoctorModule extends BxDolModule
             'ok' => true,
             'cron_restored' => false,
             'maintenance_restored' => false,
+            'maintenance_html_restored' => false,
             'compression_restored' => false,
             'errors' => array(),
         );
@@ -1443,6 +1892,57 @@ class MyUnaDoctorModule extends BxDolModule
                 $aResult['ok'] = false;
                 $aResult['errors'][] =
                     'Soft-maintenance rollback could not be verified.';
+            }
+        }
+
+        /*
+         * Restore the exact previous soft-maintenance HTML only
+         * when this journal recorded it. 0.3.4 and older journals
+         * remain backward-compatible.
+         *
+         * Maintenance itself is restored first, so if Doctor
+         * originally enabled soft maintenance the public site is
+         * already available again before its temporary landing
+         * page is removed.
+         */
+        if (
+            $bRestoreMaintenance
+            && array_key_exists(
+                'soft_maintenance_html_value',
+                $aOriginalState
+            )
+        ) {
+            $sOriginalMaintenanceHtml =
+                (string)$aOriginalState[
+                    'soft_maintenance_html_value'
+                ];
+
+            setParam(
+                'sys_maintenance_mode_html',
+                $sOriginalMaintenanceHtml
+            );
+
+            $sStoredMaintenanceHtml =
+                (string)$this->_oDb->getOne(
+                    "SELECT `value`
+                     FROM `sys_options`
+                     WHERE `name` = ?
+                     LIMIT 1",
+                    array(
+                        'sys_maintenance_mode_html'
+                    )
+                );
+
+            if (
+                $sStoredMaintenanceHtml
+                === $sOriginalMaintenanceHtml
+            ) {
+                $aResult['maintenance_html_restored'] =
+                    true;
+            } else {
+                $aResult['ok'] = false;
+                $aResult['errors'][] =
+                    'Soft-maintenance HTML rollback could not be verified.';
             }
         }
 
@@ -1574,6 +2074,7 @@ class MyUnaDoctorModule extends BxDolModule
                    'armed',
                    'runtime_protecting',
                    'runtime_protected',
+                   'runtime_merging',
                    'runtime_restoring',
                    'runtime_rollback_failed',
                    'restoring',
@@ -1613,6 +2114,56 @@ class MyUnaDoctorModule extends BxDolModule
         return $aRow;
     }
 
+
+
+    public function getLatestActiveRepairJournal()
+    {
+        $aRow = $this->_oDb->getRow(
+            "SELECT *
+             FROM `my_una_doctor_repairs`
+             WHERE `status` IN (
+                 'planned',
+                 'arming',
+                 'maintenance_enabled',
+                 'generator_paused',
+                 'armed',
+                 'runtime_protecting',
+                 'runtime_protected',
+                 'runtime_merging',
+                 'runtime_restoring',
+                 'runtime_rollback_failed',
+                 'restoring',
+                 'rollback_failed'
+             )
+             ORDER BY `id` DESC
+             LIMIT 1"
+        );
+
+        if (empty($aRow))
+            return array();
+
+        foreach (
+            array(
+                'original_state_json',
+                'planned_state_json',
+                'result_json'
+            )
+            as $sField
+        ) {
+            $aDecoded = json_decode(
+                (string)($aRow[$sField] ?? ''),
+                true
+            );
+
+            $aRow[
+                preg_replace('/_json$/', '', $sField)
+            ] = is_array($aDecoded)
+                ? $aDecoded
+                : array();
+        }
+
+        return $aRow;
+    }
 
 
     public function getRuntimeProtectionPlan($iJournalId)
@@ -4729,6 +5280,14 @@ class MyUnaDoctorModule extends BxDolModule
                 )
             );
 
+        /*
+         * Complete deterministic restore-path set for the
+         * guarded merge executor. Studio should continue using
+         * restore_preview for display.
+         */
+        $aResult['restore_files'] =
+            $aRestore;
+
         $aResult['restore_preview'] =
             array_slice($aRestore, 0, 50);
 
@@ -4797,6 +5356,15577 @@ class MyUnaDoctorModule extends BxDolModule
 
         $aResult['ok'] = true;
         $aResult['ready'] = true;
+
+        return $aResult;
+    }
+
+
+    protected function buildRuntimeMergeExecutionManifest(
+        $iJournalId,
+        $sApprovedMergePlanId
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $sApprovedMergePlanId =
+            trim((string)$sApprovedMergePlanId);
+
+        $aResult = array(
+            'ok' => false,
+            'ready' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'merge_plan_id' =>
+                $sApprovedMergePlanId,
+            'manifest' => array(),
+        );
+
+        if (
+            $iJournalId <= 0
+            || $sApprovedMergePlanId === ''
+        ) {
+            $aResult['error'] =
+                'A valid journal ID and approved merge plan ID are required.';
+
+            return $aResult;
+        }
+
+        /*
+         * Recompute the complete read-only classification.
+         * Never trust restore paths supplied by a browser.
+         */
+        $aPlan =
+            $this->getPostUpdateRuntimeMergePlan(
+                $iJournalId
+            );
+
+        if (
+            empty($aPlan['ok'])
+            || empty($aPlan['ready'])
+        ) {
+            $aResult['error'] =
+                'Fresh runtime merge planning is not ready: '
+                . (
+                    $aPlan['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $sFreshMergePlanId =
+            (string)(
+                $aPlan['merge_plan_id']
+                ?? ''
+            );
+
+        if (
+            $sFreshMergePlanId === ''
+            || !hash_equals(
+                $sFreshMergePlanId,
+                $sApprovedMergePlanId
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge approval is stale. Re-preview and approve the current merge plan.';
+
+            $aResult['fresh_merge_plan_id'] =
+                $sFreshMergePlanId;
+
+            return $aResult;
+        }
+
+        $aRestoreFiles =
+            $aPlan['restore_files']
+            ?? array();
+
+        if (
+            !is_array($aRestoreFiles)
+            || count($aRestoreFiles)
+                !== (int)(
+                    $aPlan['restore_candidate_count']
+                    ?? -1
+                )
+        ) {
+            $aResult['error'] =
+                'Runtime merge restore-path manifest is incomplete.';
+
+            return $aResult;
+        }
+
+        $aJournal = $this->_oDb->getRow(
+            "SELECT *
+             FROM `my_una_doctor_repairs`
+             WHERE `id` = ?
+             LIMIT 1",
+            array($iJournalId)
+        );
+
+        if (
+            empty($aJournal)
+            || (string)$aJournal['status']
+                !== 'runtime_protected'
+        ) {
+            $aResult['error'] =
+                'Runtime merge manifest requires a runtime-protected journal.';
+
+            return $aResult;
+        }
+
+        $aProtected = json_decode(
+            (string)$aJournal['result_json'],
+            true
+        );
+
+        if (
+            !is_array($aProtected)
+            || ($aProtected['phase'] ?? '')
+                !== 'runtime_protected'
+            || empty($aProtected['runtime_moved'])
+        ) {
+            $aResult['error'] =
+                'Runtime-protected journal state is incomplete.';
+
+            return $aResult;
+        }
+
+        $aRuntime =
+            $aProtected['runtime']
+            ?? array();
+
+        $aSafety =
+            $aProtected['safety']
+            ?? array();
+
+        $sRuntimeRelative = trim(
+            str_replace(
+                '\\',
+                '/',
+                (string)(
+                    $aRuntime['relative_directory']
+                    ?? ''
+                )
+            ),
+            '/'
+        );
+
+        if ($sRuntimeRelative !== '')
+            $sRuntimeRelative .= '/';
+
+        $sProtectedPath =
+            (string)(
+                $aSafety['protected_runtime_path']
+                ?? ''
+            );
+
+        if (
+            $sRuntimeRelative === ''
+            || $sProtectedPath === ''
+            || !is_dir($sProtectedPath)
+            || is_link($sProtectedPath)
+        ) {
+            $aResult['error'] =
+                'Protected runtime path is unavailable or unsafe.';
+
+            return $aResult;
+        }
+
+        $sProtectedReal =
+            realpath($sProtectedPath);
+
+        if ($sProtectedReal === false) {
+            $aResult['error'] =
+                'Protected runtime path could not be resolved.';
+
+            return $aResult;
+        }
+
+        $aManifest = array();
+        $iManifestBytes = 0;
+
+        foreach ($aRestoreFiles as $sModuleFile) {
+            $sModuleFile =
+                str_replace(
+                    '\\',
+                    '/',
+                    (string)$sModuleFile
+                );
+
+            if (
+                $sModuleFile === ''
+                || strpos(
+                    $sModuleFile,
+                    $sRuntimeRelative
+                ) !== 0
+            ) {
+                $aResult['error'] =
+                    'Runtime merge contains a path outside the journaled runtime directory.';
+
+                return $aResult;
+            }
+
+            $sRelative =
+                substr(
+                    $sModuleFile,
+                    strlen($sRuntimeRelative)
+                );
+
+            if ($sRelative === '') {
+                $aResult['error'] =
+                    'Runtime merge contains an empty relative path.';
+
+                return $aResult;
+            }
+
+            $aParts =
+                explode('/', $sRelative);
+
+            foreach ($aParts as $sPart) {
+                if (
+                    $sPart === ''
+                    || $sPart === '.'
+                    || $sPart === '..'
+                ) {
+                    $aResult['error'] =
+                        'Runtime merge contains an unsafe relative path: '
+                        . $sModuleFile;
+
+                    return $aResult;
+                }
+            }
+
+            $sSource =
+                $sProtectedReal
+                . DIRECTORY_SEPARATOR
+                . str_replace(
+                    '/',
+                    DIRECTORY_SEPARATOR,
+                    $sRelative
+                );
+
+            if (
+                !is_file($sSource)
+                || is_link($sSource)
+            ) {
+                $aResult['error'] =
+                    'Protected merge source is missing or unsafe: '
+                    . $sModuleFile;
+
+                return $aResult;
+            }
+
+            $sSourceReal =
+                realpath($sSource);
+
+            if (
+                $sSourceReal === false
+                || strpos(
+                    $sSourceReal,
+                    $sProtectedReal
+                    . DIRECTORY_SEPARATOR
+                ) !== 0
+            ) {
+                $aResult['error'] =
+                    'Protected merge source resolves outside the protected runtime tree: '
+                    . $sModuleFile;
+
+                return $aResult;
+            }
+
+            $aBefore =
+                @lstat($sSourceReal);
+
+            if (!is_array($aBefore)) {
+                $aResult['error'] =
+                    'Protected merge source metadata could not be read: '
+                    . $sModuleFile;
+
+                return $aResult;
+            }
+
+            if (
+                (int)($aBefore['nlink'] ?? 1)
+                !== 1
+            ) {
+                $aResult['error'] =
+                    'Protected merge source has an unsafe hard-link count: '
+                    . $sModuleFile;
+
+                return $aResult;
+            }
+
+            $sSha256 =
+                @hash_file(
+                    'sha256',
+                    $sSourceReal
+                );
+
+            if (
+                $sSha256 === false
+                || strlen($sSha256) !== 64
+            ) {
+                $aResult['error'] =
+                    'Could not calculate SHA-256 for protected merge source: '
+                    . $sModuleFile;
+
+                return $aResult;
+            }
+
+            clearstatcache(
+                true,
+                $sSourceReal
+            );
+
+            $aAfter =
+                @lstat($sSourceReal);
+
+            if (!is_array($aAfter)) {
+                $aResult['error'] =
+                    'Protected merge source metadata could not be re-read after hashing: '
+                    . $sModuleFile;
+
+                return $aResult;
+            }
+
+            /*
+             * Refuse a source that changed while its content
+             * hash was being calculated.
+             */
+            foreach (
+                array(
+                    'dev',
+                    'ino',
+                    'size',
+                    'mtime',
+                    'ctime',
+                    'uid',
+                    'gid',
+                    'nlink',
+                )
+                as $sKey
+            ) {
+                if (
+                    (int)($aBefore[$sKey] ?? -1)
+                    !==
+                    (int)($aAfter[$sKey] ?? -1)
+                ) {
+                    $aResult['error'] =
+                        'Protected merge source changed while being hashed: '
+                        . $sModuleFile;
+
+                    return $aResult;
+                }
+            }
+
+            if (
+                (
+                    (int)($aBefore['mode'] ?? 0)
+                    & 07777
+                )
+                !==
+                (
+                    (int)($aAfter['mode'] ?? 0)
+                    & 07777
+                )
+            ) {
+                $aResult['error'] =
+                    'Protected merge source mode changed while being hashed: '
+                    . $sModuleFile;
+
+                return $aResult;
+            }
+
+            $iSize =
+                (int)($aAfter['size'] ?? 0);
+
+            $aManifest[] = array(
+                'file' =>
+                    $sModuleFile,
+
+                'relative_path' =>
+                    $sRelative,
+
+                'sha256' =>
+                    strtolower($sSha256),
+
+                'size' =>
+                    $iSize,
+
+                'mode' =>
+                    sprintf(
+                        '%04o',
+                        (int)$aAfter['mode']
+                        & 07777
+                    ),
+
+                'uid' =>
+                    (int)($aAfter['uid'] ?? -1),
+
+                'gid' =>
+                    (int)($aAfter['gid'] ?? -1),
+
+                /*
+                 * Source-state evidence only. Current metadata
+                 * restoration promises mode/uid/gid, not times.
+                 */
+                'mtime' =>
+                    (int)($aAfter['mtime'] ?? 0),
+
+                'ctime' =>
+                    (int)($aAfter['ctime'] ?? 0),
+            );
+
+            $iManifestBytes +=
+                $iSize;
+        }
+
+        usort(
+            $aManifest,
+            static function ($a, $b) {
+                return strcmp(
+                    (string)($a['file'] ?? ''),
+                    (string)($b['file'] ?? '')
+                );
+            }
+        );
+
+        if (
+            count($aManifest)
+            !== count($aRestoreFiles)
+        ) {
+            $aResult['error'] =
+                'Not every approved runtime restore source was hashed.';
+
+            return $aResult;
+        }
+
+        $aFingerprint = array(
+            'journal_id' =>
+                $iJournalId,
+
+            'protection_id' =>
+                (string)(
+                    $aProtected['protection_id']
+                    ?? ''
+                ),
+
+            'merge_plan_id' =>
+                $sFreshMergePlanId,
+
+            'protected_inventory_id' =>
+                (string)(
+                    $aPlan['protected_inventory_id']
+                    ?? ''
+                ),
+
+            'module' =>
+                (string)(
+                    $aPlan['module']
+                    ?? ''
+                ),
+
+            'version' =>
+                (string)(
+                    $aPlan['version']
+                    ?? ''
+                ),
+
+            'manifest' =>
+                $aManifest,
+        );
+
+        $sJson = json_encode(
+            $aFingerprint,
+            JSON_UNESCAPED_SLASHES
+            | JSON_UNESCAPED_UNICODE
+            | JSON_INVALID_UTF8_SUBSTITUTE
+        );
+
+        if ($sJson === false)
+            $sJson = serialize($aFingerprint);
+
+        $aResult['ok'] = true;
+        $aResult['ready'] = true;
+
+        $aResult['fresh_merge_plan_id'] =
+            $sFreshMergePlanId;
+
+        $aResult['protection_id'] =
+            (string)(
+                $aProtected['protection_id']
+                ?? ''
+            );
+
+        $aResult['protected_inventory_id'] =
+            (string)(
+                $aPlan['protected_inventory_id']
+                ?? ''
+            );
+
+        $aResult['module'] =
+            (string)(
+                $aPlan['module']
+                ?? ''
+            );
+
+        $aResult['version'] =
+            (string)(
+                $aPlan['version']
+                ?? ''
+            );
+
+        $aResult['manifest_count'] =
+            count($aManifest);
+
+        $aResult['manifest_bytes'] =
+            $iManifestBytes;
+
+        $aResult['execution_manifest_id'] =
+            hash('sha256', $sJson);
+
+        $aResult['manifest'] =
+            $aManifest;
+
+        return $aResult;
+    }
+
+
+    protected function persistRuntimeMergeExecutionManifest(
+        $iJournalId,
+        array $aExecution
+    ) {
+        $iJournalId = (int)$iJournalId;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'manifest_path' => '',
+            'manifest_file_sha256' => '',
+            'manifest_file_bytes' => 0,
+            'error' => '',
+        );
+
+        if (
+            $iJournalId <= 0
+            || empty($aExecution['ok'])
+            || empty($aExecution['ready'])
+        ) {
+            $aResult['error'] =
+                'A valid ready execution manifest is required.';
+
+            return $aResult;
+        }
+
+        $sExecutionManifestId =
+            strtolower(
+                trim(
+                    (string)(
+                        $aExecution[
+                            'execution_manifest_id'
+                        ]
+                        ?? ''
+                    )
+                )
+            );
+
+        $sMergePlanId =
+            trim(
+                (string)(
+                    $aExecution['fresh_merge_plan_id']
+                    ?? ''
+                )
+            );
+
+        $sProtectionId =
+            trim(
+                (string)(
+                    $aExecution['protection_id']
+                    ?? ''
+                )
+            );
+
+        $aManifest =
+            $aExecution['manifest']
+            ?? array();
+
+        if (
+            strlen($sExecutionManifestId) !== 64
+            || $sMergePlanId === ''
+            || $sProtectionId === ''
+            || !is_array($aManifest)
+            || count($aManifest)
+                !== (int)(
+                    $aExecution['manifest_count']
+                    ?? -1
+                )
+        ) {
+            $aResult['error'] =
+                'Execution manifest identity or contents are incomplete.';
+
+            return $aResult;
+        }
+
+        /*
+         * Re-read the authoritative protected journal.
+         */
+        $aJournal = $this->_oDb->getRow(
+            "SELECT *
+             FROM `my_una_doctor_repairs`
+             WHERE `id` = ?
+             LIMIT 1",
+            array($iJournalId)
+        );
+
+        if (
+            empty($aJournal)
+            || (string)$aJournal['status']
+                !== 'runtime_protected'
+        ) {
+            $aResult['error'] =
+                'Manifest persistence requires a runtime-protected journal.';
+
+            return $aResult;
+        }
+
+        $aProtected = json_decode(
+            (string)$aJournal['result_json'],
+            true
+        );
+
+        if (
+            !is_array($aProtected)
+            || ($aProtected['phase'] ?? '')
+                !== 'runtime_protected'
+            || empty($aProtected['runtime_moved'])
+        ) {
+            $aResult['error'] =
+                'Runtime-protected journal state is incomplete.';
+
+            return $aResult;
+        }
+
+        if (
+            !hash_equals(
+                (string)(
+                    $aProtected['protection_id']
+                    ?? ''
+                ),
+                $sProtectionId
+            )
+        ) {
+            $aResult['error'] =
+                'Execution manifest protection ID no longer matches the journal.';
+
+            return $aResult;
+        }
+
+        $aSafety =
+            $aProtected['safety']
+            ?? array();
+
+        $sBasePath =
+            (string)(
+                $aSafety['base_path']
+                ?? ''
+            );
+
+        $sProtectedPath =
+            (string)(
+                $aSafety['protected_runtime_path']
+                ?? ''
+            );
+
+        if (
+            $sBasePath === ''
+            || $sProtectedPath === ''
+            || !is_dir($sBasePath)
+            || is_link($sBasePath)
+            || !is_dir($sProtectedPath)
+            || is_link($sProtectedPath)
+        ) {
+            $aResult['error'] =
+                'Journal safety paths are unavailable or unsafe.';
+
+            return $aResult;
+        }
+
+        $sBaseReal =
+            realpath($sBasePath);
+
+        $sProtectedReal =
+            realpath($sProtectedPath);
+
+        if (
+            $sBaseReal === false
+            || $sProtectedReal === false
+        ) {
+            $aResult['error'] =
+                'Journal safety paths could not be resolved.';
+
+            return $aResult;
+        }
+
+        /*
+         * The manifest must live BESIDE the protected runtime
+         * tree, never inside it. Otherwise it would modify the
+         * protected runtime inventory fingerprint.
+         */
+        if (
+            strpos(
+                $sProtectedReal,
+                $sBaseReal . DIRECTORY_SEPARATOR
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Protected runtime tree is not inside the journal safety base.';
+
+            return $aResult;
+        }
+
+        $sManifestPath =
+            $sBaseReal
+            . DIRECTORY_SEPARATOR
+            . 'runtime-merge-journal-'
+            . $iJournalId
+            . '.json';
+
+        /*
+         * Persist the complete cryptographic execution contract,
+         * not merely the raw file array.
+         */
+        $aPayload = array(
+            'schema' =>
+                'my_una_doctor_runtime_merge_manifest_v1',
+
+            'journal_id' =>
+                $iJournalId,
+
+            'module' =>
+                (string)(
+                    $aExecution['module']
+                    ?? ''
+                ),
+
+            'version' =>
+                (string)(
+                    $aExecution['version']
+                    ?? ''
+                ),
+
+            'protection_id' =>
+                $sProtectionId,
+
+            'merge_plan_id' =>
+                $sMergePlanId,
+
+            'execution_manifest_id' =>
+                $sExecutionManifestId,
+
+            'protected_inventory_id' =>
+                (string)(
+                    $aExecution[
+                        'protected_inventory_id'
+                    ]
+                    ?? ''
+                ),
+
+            'manifest_count' =>
+                (int)(
+                    $aExecution['manifest_count']
+                    ?? 0
+                ),
+
+            'manifest_bytes' =>
+                (int)(
+                    $aExecution['manifest_bytes']
+                    ?? 0
+                ),
+
+            'manifest' =>
+                $aManifest,
+        );
+
+        $sJson = json_encode(
+            $aPayload,
+            JSON_UNESCAPED_SLASHES
+            | JSON_UNESCAPED_UNICODE
+            | JSON_INVALID_UTF8_SUBSTITUTE
+        );
+
+        if ($sJson === false) {
+            $aResult['error'] =
+                'Execution manifest JSON encoding failed.';
+
+            return $aResult;
+        }
+
+        $sExpectedFileHash =
+            hash(
+                'sha256',
+                $sJson
+            );
+
+        /*
+         * Idempotent handling:
+         * if the exact durable manifest already exists, verify
+         * it instead of rewriting it.
+         */
+        if (
+            file_exists($sManifestPath)
+            || is_link($sManifestPath)
+        ) {
+            if (
+                !is_file($sManifestPath)
+                || is_link($sManifestPath)
+            ) {
+                $aResult['error'] =
+                    'Existing runtime merge manifest path is unsafe.';
+
+                return $aResult;
+            }
+
+            $sExistingHash =
+                @hash_file(
+                    'sha256',
+                    $sManifestPath
+                );
+
+            if (
+                $sExistingHash === false
+                || !hash_equals(
+                    $sExpectedFileHash,
+                    strtolower($sExistingHash)
+                )
+            ) {
+                $aResult['error'] =
+                    'A different runtime merge manifest already exists for this journal.';
+
+                return $aResult;
+            }
+
+            $aResult['ok'] = true;
+            $aResult['manifest_path'] =
+                $sManifestPath;
+            $aResult['manifest_file_sha256'] =
+                $sExpectedFileHash;
+            $aResult['manifest_file_bytes'] =
+                (int)filesize($sManifestPath);
+
+            return $aResult;
+        }
+
+        try {
+            $sNonce =
+                bin2hex(
+                    random_bytes(8)
+                );
+        } catch (Throwable $e) {
+            $sNonce =
+                str_replace(
+                    '.',
+                    '',
+                    uniqid('', true)
+                );
+        }
+
+        $sTemporary =
+            $sBaseReal
+            . DIRECTORY_SEPARATOR
+            . '.runtime-merge-journal-'
+            . $iJournalId
+            . '-'
+            . $sNonce
+            . '.tmp';
+
+        $h = @fopen(
+            $sTemporary,
+            'xb'
+        );
+
+        if ($h === false) {
+            $aResult['error'] =
+                'Could not create temporary runtime merge manifest.';
+
+            return $aResult;
+        }
+
+        $bWriteOk = true;
+        $iLength = strlen($sJson);
+        $iOffset = 0;
+
+        while ($iOffset < $iLength) {
+            $iWritten =
+                @fwrite(
+                    $h,
+                    substr(
+                        $sJson,
+                        $iOffset
+                    )
+                );
+
+            if (
+                $iWritten === false
+                || $iWritten <= 0
+            ) {
+                $bWriteOk = false;
+                break;
+            }
+
+            $iOffset += $iWritten;
+        }
+
+        if ($bWriteOk)
+            $bWriteOk = @fflush($h);
+
+        if (
+            $bWriteOk
+            && function_exists('fsync')
+        ) {
+            $bWriteOk = @fsync($h);
+        }
+
+        @fclose($h);
+
+        if (!$bWriteOk) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Could not durably write runtime merge manifest.';
+
+            return $aResult;
+        }
+
+        if (!@chmod($sTemporary, 0600)) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Could not secure temporary runtime merge manifest permissions.';
+
+            return $aResult;
+        }
+
+        $sTemporaryHash =
+            @hash_file(
+                'sha256',
+                $sTemporary
+            );
+
+        if (
+            $sTemporaryHash === false
+            || !hash_equals(
+                $sExpectedFileHash,
+                strtolower($sTemporaryHash)
+            )
+        ) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Temporary runtime merge manifest failed SHA-256 verification.';
+
+            return $aResult;
+        }
+
+        /*
+         * link() gives us atomic create-without-overwrite
+         * semantics on the same filesystem.
+         */
+        if (!@link(
+            $sTemporary,
+            $sManifestPath
+        )) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Could not atomically publish runtime merge manifest.';
+
+            return $aResult;
+        }
+
+        @unlink($sTemporary);
+
+        clearstatcache(
+            true,
+            $sManifestPath
+        );
+
+        if (
+            !is_file($sManifestPath)
+            || is_link($sManifestPath)
+        ) {
+            $aResult['error'] =
+                'Published runtime merge manifest is unavailable or unsafe.';
+
+            return $aResult;
+        }
+
+        $sFinalHash =
+            @hash_file(
+                'sha256',
+                $sManifestPath
+            );
+
+        if (
+            $sFinalHash === false
+            || !hash_equals(
+                $sExpectedFileHash,
+                strtolower($sFinalHash)
+            )
+        ) {
+            $aResult['error'] =
+                'Published runtime merge manifest failed final SHA-256 verification.';
+
+            return $aResult;
+        }
+
+        $aResult['ok'] = true;
+        $aResult['changes_applied'] = true;
+        $aResult['manifest_path'] =
+            $sManifestPath;
+        $aResult['manifest_file_sha256'] =
+            $sExpectedFileHash;
+        $aResult['manifest_file_bytes'] =
+            (int)filesize($sManifestPath);
+
+        return $aResult;
+    }
+
+
+    protected function loadAndVerifyRuntimeMergeManifest(
+        $iJournalId
+    ) {
+        $iJournalId = (int)$iJournalId;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'manifest' => array(),
+            'error' => '',
+        );
+
+        if ($iJournalId <= 0) {
+            $aResult['error'] =
+                'A valid runtime merge journal ID is required.';
+
+            return $aResult;
+        }
+
+        $aJournal = $this->_oDb->getRow(
+            "SELECT *
+             FROM `my_una_doctor_repairs`
+             WHERE `id` = ?
+             LIMIT 1",
+            array($iJournalId)
+        );
+
+        if (
+            empty($aJournal)
+            || (string)$aJournal['status']
+                !== 'runtime_merging'
+        ) {
+            $aResult['error'] =
+                'Runtime merge manifest verification requires a runtime-merging journal.';
+
+            return $aResult;
+        }
+
+        $aState = json_decode(
+            (string)$aJournal['result_json'],
+            true
+        );
+
+        if (
+            !is_array($aState)
+            || ($aState['phase'] ?? '')
+                !== 'runtime_merging'
+            || empty($aState['runtime_moved'])
+        ) {
+            $aResult['error'] =
+                'Runtime-merging journal state is incomplete.';
+
+            return $aResult;
+        }
+
+        $aMerge =
+            $aState['merge']
+            ?? array();
+
+        $aRuntime =
+            $aState['runtime']
+            ?? array();
+
+        $aSafety =
+            $aState['safety']
+            ?? array();
+
+        if (
+            !is_array($aMerge)
+            || !is_array($aRuntime)
+            || !is_array($aSafety)
+        ) {
+            $aResult['error'] =
+                'Runtime merge recovery state is incomplete.';
+
+            return $aResult;
+        }
+
+        $sManifestPath =
+            (string)(
+                $aMerge['manifest_path']
+                ?? ''
+            );
+
+        $sExpectedFileHash =
+            strtolower(
+                (string)(
+                    $aMerge[
+                        'manifest_file_sha256'
+                    ]
+                    ?? ''
+                )
+            );
+
+        $sExecutionManifestId =
+            strtolower(
+                (string)(
+                    $aMerge[
+                        'execution_manifest_id'
+                    ]
+                    ?? ''
+                )
+            );
+
+        $sMergePlanId =
+            (string)(
+                $aMerge['merge_plan_id']
+                ?? ''
+            );
+
+        $sProtectionId =
+            (string)(
+                $aState['protection_id']
+                ?? ''
+            );
+
+        $sProtectedInventoryId =
+            (string)(
+                $aMerge[
+                    'protected_inventory_id'
+                ]
+                ?? ''
+            );
+
+        $sBasePath =
+            (string)(
+                $aSafety['base_path']
+                ?? ''
+            );
+
+        $sProtectedPath =
+            (string)(
+                $aSafety[
+                    'protected_runtime_path'
+                ]
+                ?? ''
+            );
+
+        if (
+            $sManifestPath === ''
+            || strlen($sExpectedFileHash) !== 64
+            || strlen($sExecutionManifestId) !== 64
+            || $sMergePlanId === ''
+            || $sProtectionId === ''
+            || $sProtectedInventoryId === ''
+            || $sBasePath === ''
+            || $sProtectedPath === ''
+        ) {
+            $aResult['error'] =
+                'Runtime merge manifest identity is incomplete.';
+
+            return $aResult;
+        }
+
+        if (
+            !is_dir($sBasePath)
+            || is_link($sBasePath)
+            || !is_dir($sProtectedPath)
+            || is_link($sProtectedPath)
+            || !is_file($sManifestPath)
+            || is_link($sManifestPath)
+        ) {
+            $aResult['error'] =
+                'Runtime merge safety or manifest path is unavailable or unsafe.';
+
+            return $aResult;
+        }
+
+        $sBaseReal =
+            realpath($sBasePath);
+
+        $sProtectedReal =
+            realpath($sProtectedPath);
+
+        $sManifestReal =
+            realpath($sManifestPath);
+
+        if (
+            $sBaseReal === false
+            || $sProtectedReal === false
+            || $sManifestReal === false
+        ) {
+            $aResult['error'] =
+                'Runtime merge recovery paths could not be resolved.';
+
+            return $aResult;
+        }
+
+        /*
+         * Both protected runtime and sidecar must be direct
+         * journal-safety children. The sidecar must never be
+         * inside the protected runtime inventory.
+         */
+        if (
+            dirname($sManifestReal) !== $sBaseReal
+            || basename($sManifestReal)
+                !== (
+                    'runtime-merge-journal-'
+                    . $iJournalId
+                    . '.json'
+                )
+            || strpos(
+                $sProtectedReal,
+                $sBaseReal
+                . DIRECTORY_SEPARATOR
+            ) !== 0
+            || strpos(
+                $sManifestReal,
+                $sProtectedReal
+                . DIRECTORY_SEPARATOR
+            ) === 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge sidecar location does not match the journal safety contract.';
+
+            return $aResult;
+        }
+
+        $aManifestStat =
+            @lstat($sManifestReal);
+
+        if (
+            !is_array($aManifestStat)
+            || (int)(
+                $aManifestStat['nlink']
+                ?? 0
+            ) !== 1
+            || (
+                (int)(
+                    $aManifestStat['mode']
+                    ?? 0
+                )
+                & 07777
+            ) !== 0600
+        ) {
+            $aResult['error'] =
+                'Runtime merge sidecar filesystem metadata is unsafe.';
+
+            return $aResult;
+        }
+
+        $iExpectedFileBytes =
+            (int)(
+                $aMerge[
+                    'manifest_file_bytes'
+                ]
+                ?? -1
+            );
+
+        if (
+            $iExpectedFileBytes < 0
+            || (int)$aManifestStat['size']
+                !== $iExpectedFileBytes
+        ) {
+            $aResult['error'] =
+                'Runtime merge sidecar size no longer matches the journal.';
+
+            return $aResult;
+        }
+
+        $sActualFileHash =
+            @hash_file(
+                'sha256',
+                $sManifestReal
+            );
+
+        if (
+            $sActualFileHash === false
+            || !hash_equals(
+                $sExpectedFileHash,
+                strtolower($sActualFileHash)
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge sidecar SHA-256 no longer matches the journal.';
+
+            return $aResult;
+        }
+
+        $sJson =
+            @file_get_contents(
+                $sManifestReal
+            );
+
+        if ($sJson === false) {
+            $aResult['error'] =
+                'Runtime merge sidecar could not be read.';
+
+            return $aResult;
+        }
+
+        $aPayload =
+            json_decode(
+                $sJson,
+                true
+            );
+
+        if (
+            !is_array($aPayload)
+            || (
+                $aPayload['schema']
+                ?? ''
+            ) !==
+                'my_una_doctor_runtime_merge_manifest_v1'
+        ) {
+            $aResult['error'] =
+                'Runtime merge sidecar schema is invalid.';
+
+            return $aResult;
+        }
+
+        /*
+         * Verify every durable identity copied into the sidecar.
+         */
+        if (
+            (int)(
+                $aPayload['journal_id']
+                ?? 0
+            ) !== $iJournalId
+            || (string)(
+                $aPayload['module']
+                ?? ''
+            ) !== (string)(
+                $aJournal['module']
+                ?? ''
+            )
+            || !hash_equals(
+                $sProtectionId,
+                (string)(
+                    $aPayload[
+                        'protection_id'
+                    ]
+                    ?? ''
+                )
+            )
+            || !hash_equals(
+                $sMergePlanId,
+                (string)(
+                    $aPayload[
+                        'merge_plan_id'
+                    ]
+                    ?? ''
+                )
+            )
+            || !hash_equals(
+                $sExecutionManifestId,
+                strtolower(
+                    (string)(
+                        $aPayload[
+                            'execution_manifest_id'
+                        ]
+                        ?? ''
+                    )
+                )
+            )
+            || !hash_equals(
+                $sProtectedInventoryId,
+                (string)(
+                    $aPayload[
+                        'protected_inventory_id'
+                    ]
+                    ?? ''
+                )
+            )
+            || (string)(
+                $aPayload['version']
+                ?? ''
+            ) !== (string)(
+                $aMerge['module_version']
+                ?? ''
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge sidecar identity does not match its journal.';
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aPayload['manifest']
+            ?? array();
+
+        $iExpectedCount =
+            (int)(
+                $aMerge['manifest_count']
+                ?? -1
+            );
+
+        $iExpectedBytes =
+            (int)(
+                $aMerge['manifest_bytes']
+                ?? -1
+            );
+
+        if (
+            !is_array($aManifest)
+            || $iExpectedCount < 0
+            || count($aManifest)
+                !== $iExpectedCount
+            || (int)(
+                $aPayload['manifest_count']
+                ?? -1
+            ) !== $iExpectedCount
+            || (int)(
+                $aPayload['manifest_bytes']
+                ?? -1
+            ) !== $iExpectedBytes
+        ) {
+            $aResult['error'] =
+                'Runtime merge sidecar manifest counts are inconsistent.';
+
+            return $aResult;
+        }
+
+        $sRuntimeRelative =
+            trim(
+                str_replace(
+                    '\\',
+                    '/',
+                    (string)(
+                        $aRuntime[
+                            'relative_directory'
+                        ]
+                        ?? ''
+                    )
+                ),
+                '/'
+            );
+
+        if ($sRuntimeRelative !== '')
+            $sRuntimeRelative .= '/';
+
+        if ($sRuntimeRelative === '') {
+            $aResult['error'] =
+                'Runtime merge journal has no valid runtime-relative prefix.';
+
+            return $aResult;
+        }
+
+        $aSeen = array();
+        $iCalculatedBytes = 0;
+        $sPreviousFile = '';
+
+        foreach ($aManifest as $aEntry) {
+            if (!is_array($aEntry)) {
+                $aResult['error'] =
+                    'Runtime merge manifest contains a malformed entry.';
+
+                return $aResult;
+            }
+
+            $sFile =
+                str_replace(
+                    '\\',
+                    '/',
+                    (string)(
+                        $aEntry['file']
+                        ?? ''
+                    )
+                );
+
+            $sRelative =
+                str_replace(
+                    '\\',
+                    '/',
+                    (string)(
+                        $aEntry[
+                            'relative_path'
+                        ]
+                        ?? ''
+                    )
+                );
+
+            $sSha256 =
+                strtolower(
+                    (string)(
+                        $aEntry['sha256']
+                        ?? ''
+                    )
+                );
+
+            $iSize =
+                (int)(
+                    $aEntry['size']
+                    ?? -1
+                );
+
+            $sMode =
+                (string)(
+                    $aEntry['mode']
+                    ?? ''
+                );
+
+            $iUid =
+                (int)(
+                    $aEntry['uid']
+                    ?? -1
+                );
+
+            $iGid =
+                (int)(
+                    $aEntry['gid']
+                    ?? -1
+                );
+
+            if (
+                $sFile === ''
+                || $sRelative === ''
+                || strpos(
+                    $sFile,
+                    $sRuntimeRelative
+                ) !== 0
+                || substr(
+                    $sFile,
+                    strlen($sRuntimeRelative)
+                ) !== $sRelative
+                || !preg_match(
+                    '/^[a-f0-9]{64}$/',
+                    $sSha256
+                )
+                || $iSize < 0
+                || !preg_match(
+                    '/^[0-7]{4}$/',
+                    $sMode
+                )
+                || $iUid < 0
+                || $iGid < 0
+            ) {
+                $aResult['error'] =
+                    'Runtime merge manifest contains invalid file identity or metadata.';
+
+                return $aResult;
+            }
+
+            $aParts =
+                explode(
+                    '/',
+                    $sRelative
+                );
+
+            foreach ($aParts as $sPart) {
+                if (
+                    $sPart === ''
+                    || $sPart === '.'
+                    || $sPart === '..'
+                ) {
+                    $aResult['error'] =
+                        'Runtime merge manifest contains an unsafe path: '
+                        . $sFile;
+
+                    return $aResult;
+                }
+            }
+
+            if (
+                isset($aSeen[$sFile])
+                || (
+                    $sPreviousFile !== ''
+                    && strcmp(
+                        $sPreviousFile,
+                        $sFile
+                    ) >= 0
+                )
+            ) {
+                $aResult['error'] =
+                    'Runtime merge manifest contains duplicate or unsorted paths.';
+
+                return $aResult;
+            }
+
+            $aSeen[$sFile] = true;
+            $sPreviousFile = $sFile;
+            $iCalculatedBytes += $iSize;
+        }
+
+        if ($iCalculatedBytes !== $iExpectedBytes) {
+            $aResult['error'] =
+                'Runtime merge manifest byte total does not match the journal.';
+
+            return $aResult;
+        }
+
+        /*
+         * Reconstruct the exact fingerprint used when the
+         * execution_manifest_id was originally created.
+         */
+        $aFingerprint = array(
+            'journal_id' =>
+                $iJournalId,
+
+            'protection_id' =>
+                $sProtectionId,
+
+            'merge_plan_id' =>
+                $sMergePlanId,
+
+            'protected_inventory_id' =>
+                $sProtectedInventoryId,
+
+            'module' =>
+                (string)(
+                    $aPayload['module']
+                    ?? ''
+                ),
+
+            'version' =>
+                (string)(
+                    $aPayload['version']
+                    ?? ''
+                ),
+
+            'manifest' =>
+                $aManifest,
+        );
+
+        $sFingerprintJson =
+            json_encode(
+                $aFingerprint,
+                JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        if ($sFingerprintJson === false)
+            $sFingerprintJson =
+                serialize($aFingerprint);
+
+        $sCalculatedExecutionId =
+            hash(
+                'sha256',
+                $sFingerprintJson
+            );
+
+        if (
+            !hash_equals(
+                $sExecutionManifestId,
+                $sCalculatedExecutionId
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge execution manifest ID could not be reproduced.';
+
+            return $aResult;
+        }
+
+        /*
+         * The original protected runtime metadata inventory must
+         * also remain exact before any merge recovery operation
+         * is allowed to trust this sidecar.
+         */
+        $aProtectedVerify =
+            $this->verifyRuntimeTreeAgainstPlan(
+                $sProtectedReal,
+                $aRuntime
+            );
+
+        if (empty($aProtectedVerify['ok'])) {
+            $aResult['error'] =
+                'Protected runtime verification failed while loading merge manifest: '
+                . (
+                    $aProtectedVerify['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        if (
+            !hash_equals(
+                $sProtectedInventoryId,
+                (string)(
+                    $aProtectedVerify[
+                        'inspection'
+                    ][
+                        'runtime_inventory_id'
+                    ]
+                    ?? ''
+                )
+            )
+        ) {
+            $aResult['error'] =
+                'Protected runtime inventory no longer matches the merge journal.';
+
+            return $aResult;
+        }
+
+        $aResult['ok'] = true;
+        $aResult['manifest_path'] =
+            $sManifestReal;
+        $aResult['manifest_file_sha256'] =
+            $sActualFileHash;
+        $aResult['execution_manifest_id'] =
+            $sCalculatedExecutionId;
+        $aResult['manifest_count'] =
+            count($aManifest);
+        $aResult['manifest_bytes'] =
+            $iCalculatedBytes;
+        $aResult['manifest'] =
+            $aManifest;
+        $aResult['state'] =
+            $aState;
+
+        return $aResult;
+    }
+
+
+    protected function inspectRuntimeMergeDestinationEntry(
+        $iJournalId,
+        $iManifestIndex
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iManifestIndex = (int)$iManifestIndex;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'manifest_index' => $iManifestIndex,
+            'state' => '',
+            'matches_manifest' => false,
+            'error' => '',
+        );
+
+        $aVerified =
+            $this->loadAndVerifyRuntimeMergeManifest(
+                $iJournalId
+            );
+
+        if (empty($aVerified['ok'])) {
+            $aResult['error'] =
+                'Runtime merge manifest could not be verified: '
+                . (
+                    $aVerified['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aVerified['manifest']
+            ?? array();
+
+        if (
+            $iManifestIndex < 0
+            || !isset($aManifest[$iManifestIndex])
+            || !is_array(
+                $aManifest[$iManifestIndex]
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge manifest index is invalid.';
+
+            return $aResult;
+        }
+
+        $aEntry =
+            $aManifest[$iManifestIndex];
+
+        $aState =
+            $aVerified['state']
+            ?? array();
+
+        $aRuntime =
+            $aState['runtime']
+            ?? array();
+
+        $sRuntimePath =
+            (string)(
+                $aRuntime['path']
+                ?? ''
+            );
+
+        $sRelative =
+            str_replace(
+                '\\',
+                '/',
+                (string)(
+                    $aEntry['relative_path']
+                    ?? ''
+                )
+            );
+
+        if (
+            $sRuntimePath === ''
+            || $sRelative === ''
+            || !is_dir($sRuntimePath)
+            || is_link($sRuntimePath)
+        ) {
+            $aResult['error'] =
+                'Live runtime path is unavailable or unsafe.';
+
+            return $aResult;
+        }
+
+        $sRuntimeReal =
+            realpath($sRuntimePath);
+
+        if ($sRuntimeReal === false) {
+            $aResult['error'] =
+                'Live runtime path could not be resolved.';
+
+            return $aResult;
+        }
+
+        /*
+         * relative_path has already been validated by the
+         * immutable sidecar verifier, but rebuild defensively.
+         */
+        $aParts =
+            explode('/', $sRelative);
+
+        foreach ($aParts as $sPart) {
+            if (
+                $sPart === ''
+                || $sPart === '.'
+                || $sPart === '..'
+            ) {
+                $aResult['error'] =
+                    'Runtime merge destination path is unsafe.';
+
+                return $aResult;
+            }
+        }
+
+        $sDestination =
+            $sRuntimeReal
+            . DIRECTORY_SEPARATOR
+            . str_replace(
+                '/',
+                DIRECTORY_SEPARATOR,
+                $sRelative
+            );
+
+        /*
+         * If the destination does not exist, verify any existing
+         * parent components are real directories, not symlinks
+         * or files.
+         */
+        if (
+            !file_exists($sDestination)
+            && !is_link($sDestination)
+        ) {
+            $sParent =
+                dirname($sDestination);
+
+            while (
+                $sParent !== $sRuntimeReal
+                && strpos(
+                    $sParent,
+                    $sRuntimeReal
+                    . DIRECTORY_SEPARATOR
+                ) === 0
+            ) {
+                if (
+                    is_link($sParent)
+                    || (
+                        file_exists($sParent)
+                        && !is_dir($sParent)
+                    )
+                ) {
+                    $aResult['error'] =
+                        'Runtime merge destination has an unsafe parent path.';
+
+                    return $aResult;
+                }
+
+                $sNext =
+                    dirname($sParent);
+
+                if ($sNext === $sParent)
+                    break;
+
+                $sParent = $sNext;
+            }
+
+            $aResult['ok'] = true;
+            $aResult['state'] = 'absent';
+            $aResult['file'] =
+                (string)(
+                    $aEntry['file']
+                    ?? ''
+                );
+            $aResult['relative_path'] =
+                $sRelative;
+            $aResult['destination'] =
+                $sDestination;
+            $aResult['entry'] =
+                $aEntry;
+
+            return $aResult;
+        }
+
+        /*
+         * Existing destinations must be plain single-link files.
+         */
+        if (
+            !is_file($sDestination)
+            || is_link($sDestination)
+        ) {
+            $aResult['error'] =
+                'Existing runtime merge destination is not a safe regular file.';
+
+            return $aResult;
+        }
+
+        $sDestinationReal =
+            realpath($sDestination);
+
+        if (
+            $sDestinationReal === false
+            || strpos(
+                $sDestinationReal,
+                $sRuntimeReal
+                . DIRECTORY_SEPARATOR
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge destination resolves outside the live runtime tree.';
+
+            return $aResult;
+        }
+
+        $aBefore =
+            @lstat($sDestinationReal);
+
+        if (
+            !is_array($aBefore)
+            || (int)(
+                $aBefore['nlink']
+                ?? 0
+            ) !== 1
+        ) {
+            $aResult['error'] =
+                'Runtime merge destination metadata or hard-link count is unsafe.';
+
+            return $aResult;
+        }
+
+        $sActualSha256 =
+            @hash_file(
+                'sha256',
+                $sDestinationReal
+            );
+
+        if ($sActualSha256 === false) {
+            $aResult['error'] =
+                'Runtime merge destination SHA-256 could not be calculated.';
+
+            return $aResult;
+        }
+
+        clearstatcache(
+            true,
+            $sDestinationReal
+        );
+
+        $aAfter =
+            @lstat($sDestinationReal);
+
+        if (!is_array($aAfter)) {
+            $aResult['error'] =
+                'Runtime merge destination metadata could not be re-read.';
+
+            return $aResult;
+        }
+
+        /*
+         * Refuse a destination that changes during inspection.
+         */
+        foreach (
+            array(
+                'dev',
+                'ino',
+                'size',
+                'mtime',
+                'ctime',
+                'uid',
+                'gid',
+                'nlink',
+            )
+            as $sKey
+        ) {
+            if (
+                (int)($aBefore[$sKey] ?? -1)
+                !==
+                (int)($aAfter[$sKey] ?? -1)
+            ) {
+                $aResult['error'] =
+                    'Runtime merge destination changed during verification.';
+
+                return $aResult;
+            }
+        }
+
+        $sExpectedSha256 =
+            strtolower(
+                (string)(
+                    $aEntry['sha256']
+                    ?? ''
+                )
+            );
+
+        $iExpectedSize =
+            (int)(
+                $aEntry['size']
+                ?? -1
+            );
+
+        $iExpectedMode =
+            octdec(
+                (string)(
+                    $aEntry['mode']
+                    ?? '0000'
+                )
+            );
+
+        $iExpectedUid =
+            (int)(
+                $aEntry['uid']
+                ?? -1
+            );
+
+        $iExpectedGid =
+            (int)(
+                $aEntry['gid']
+                ?? -1
+            );
+
+        $bMatches =
+            hash_equals(
+                $sExpectedSha256,
+                strtolower($sActualSha256)
+            )
+            && (int)$aAfter['size']
+                === $iExpectedSize
+            && (
+                (int)$aAfter['mode']
+                & 07777
+            ) === $iExpectedMode
+            && (int)$aAfter['uid']
+                === $iExpectedUid
+            && (int)$aAfter['gid']
+                === $iExpectedGid;
+
+        $aResult['ok'] = true;
+        $aResult['state'] =
+            $bMatches
+                ? 'exact'
+                : 'mismatch';
+
+        $aResult['matches_manifest'] =
+            $bMatches;
+
+        $aResult['file'] =
+            (string)(
+                $aEntry['file']
+                ?? ''
+            );
+
+        $aResult['relative_path'] =
+            $sRelative;
+
+        $aResult['destination'] =
+            $sDestinationReal;
+
+        $aResult['actual_sha256'] =
+            strtolower($sActualSha256);
+
+        $aResult['actual_size'] =
+            (int)$aAfter['size'];
+
+        $aResult['actual_mode'] =
+            sprintf(
+                '%04o',
+                (int)$aAfter['mode']
+                & 07777
+            );
+
+        $aResult['actual_uid'] =
+            (int)$aAfter['uid'];
+
+        $aResult['actual_gid'] =
+            (int)$aAfter['gid'];
+
+        $aResult['actual_dev'] =
+            (int)($aAfter['dev'] ?? -1);
+
+        $aResult['actual_ino'] =
+            (int)($aAfter['ino'] ?? -1);
+
+        $aResult['actual_nlink'] =
+            (int)($aAfter['nlink'] ?? -1);
+
+        $aResult['actual_mtime'] =
+            (int)($aAfter['mtime'] ?? -1);
+
+        $aResult['actual_ctime'] =
+            (int)($aAfter['ctime'] ?? -1);
+
+        $aResult['entry'] =
+            $aEntry;
+
+        return $aResult;
+    }
+
+
+    protected function inspectRuntimeMergeDestinationEntryFromSession(
+        array $aSession,
+        $iManifestIndex
+    ) {
+        $iManifestIndex = (int)$iManifestIndex;
+
+        $iJournalId =
+            (int)(
+                $aSession['journal_id']
+                ?? 0
+            );
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'manifest_index' => $iManifestIndex,
+            'state' => '',
+            'matches_manifest' => false,
+            'error' => '',
+        );
+
+        /*
+         * The session itself must already have been established
+         * by prepareRuntimeMergeBatchSession().
+         */
+        if (
+            empty($aSession['ok'])
+            || $iJournalId <= 0
+            || empty($aSession['session_id'])
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch session is invalid.';
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aSession['manifest']
+            ?? array();
+
+        if (
+            $iManifestIndex < 0
+            || !isset($aManifest[$iManifestIndex])
+            || !is_array(
+                $aManifest[$iManifestIndex]
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge manifest index is invalid.';
+
+            return $aResult;
+        }
+
+        $aEntry =
+            $aManifest[$iManifestIndex];
+
+        $aState =
+            $aSession['state']
+            ?? array();
+
+        if (
+            !is_array($aState)
+            || ($aState['phase'] ?? '')
+                !== 'runtime_merging'
+            || empty($aState['runtime_moved'])
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch session state is invalid.';
+
+            return $aResult;
+        }
+
+        $aRuntime =
+            $aState['runtime']
+            ?? array();
+
+        $sRuntimePath =
+            (string)(
+                $aRuntime['path']
+                ?? ''
+            );
+
+        $sRelative =
+            str_replace(
+                '\\',
+                '/',
+                (string)(
+                    $aEntry['relative_path']
+                    ?? ''
+                )
+            );
+
+        if (
+            $sRuntimePath === ''
+            || $sRelative === ''
+            || !is_dir($sRuntimePath)
+            || is_link($sRuntimePath)
+        ) {
+            $aResult['error'] =
+                'Live runtime path is unavailable or unsafe.';
+
+            return $aResult;
+        }
+
+        $sRuntimeReal =
+            realpath($sRuntimePath);
+
+        if ($sRuntimeReal === false) {
+            $aResult['error'] =
+                'Live runtime path could not be resolved.';
+
+            return $aResult;
+        }
+
+        /*
+         * relative_path was validated by the immutable manifest
+         * verifier when the session was created, but rebuild
+         * defensively exactly as the reference inspector does.
+         */
+        $aParts =
+            explode(
+                '/',
+                $sRelative
+            );
+
+        foreach ($aParts as $sPart) {
+            if (
+                $sPart === ''
+                || $sPart === '.'
+                || $sPart === '..'
+            ) {
+                $aResult['error'] =
+                    'Runtime merge destination path is unsafe.';
+
+                return $aResult;
+            }
+        }
+
+        $sDestination =
+            $sRuntimeReal
+            . DIRECTORY_SEPARATOR
+            . str_replace(
+                '/',
+                DIRECTORY_SEPARATOR,
+                $sRelative
+            );
+
+        /*
+         * Absent destination: every existing parent component
+         * beneath the runtime root must remain a real directory.
+         */
+        if (
+            !file_exists($sDestination)
+            && !is_link($sDestination)
+        ) {
+            $sParent =
+                dirname($sDestination);
+
+            while (
+                $sParent !== $sRuntimeReal
+                && strpos(
+                    $sParent,
+                    $sRuntimeReal
+                    . DIRECTORY_SEPARATOR
+                ) === 0
+            ) {
+                if (
+                    is_link($sParent)
+                    || (
+                        file_exists($sParent)
+                        && !is_dir($sParent)
+                    )
+                ) {
+                    $aResult['error'] =
+                        'Runtime merge destination has an unsafe parent path.';
+
+                    return $aResult;
+                }
+
+                $sNext =
+                    dirname($sParent);
+
+                if ($sNext === $sParent)
+                    break;
+
+                $sParent =
+                    $sNext;
+            }
+
+            $aResult['ok'] = true;
+            $aResult['state'] =
+                'absent';
+
+            $aResult['file'] =
+                (string)(
+                    $aEntry['file']
+                    ?? ''
+                );
+
+            $aResult['relative_path'] =
+                $sRelative;
+
+            $aResult['destination'] =
+                $sDestination;
+
+            $aResult['entry'] =
+                $aEntry;
+
+            return $aResult;
+        }
+
+        /*
+         * Existing destinations must be plain single-link files.
+         */
+        if (
+            !is_file($sDestination)
+            || is_link($sDestination)
+        ) {
+            $aResult['error'] =
+                'Existing runtime merge destination is not a safe regular file.';
+
+            return $aResult;
+        }
+
+        $sDestinationReal =
+            realpath($sDestination);
+
+        if (
+            $sDestinationReal === false
+            || strpos(
+                $sDestinationReal,
+                $sRuntimeReal
+                . DIRECTORY_SEPARATOR
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge destination resolves outside the live runtime tree.';
+
+            return $aResult;
+        }
+
+        $aBefore =
+            @lstat(
+                $sDestinationReal
+            );
+
+        if (
+            !is_array($aBefore)
+            || (int)(
+                $aBefore['nlink']
+                ?? 0
+            ) !== 1
+        ) {
+            $aResult['error'] =
+                'Runtime merge destination metadata or hard-link count is unsafe.';
+
+            return $aResult;
+        }
+
+        $sActualSha256 =
+            @hash_file(
+                'sha256',
+                $sDestinationReal
+            );
+
+        if ($sActualSha256 === false) {
+            $aResult['error'] =
+                'Runtime merge destination SHA-256 could not be calculated.';
+
+            return $aResult;
+        }
+
+        clearstatcache(
+            true,
+            $sDestinationReal
+        );
+
+        $aAfter =
+            @lstat(
+                $sDestinationReal
+            );
+
+        if (!is_array($aAfter)) {
+            $aResult['error'] =
+                'Runtime merge destination metadata could not be re-read.';
+
+            return $aResult;
+        }
+
+        /*
+         * Refuse a destination that changes during inspection.
+         */
+        foreach (
+            array(
+                'dev',
+                'ino',
+                'size',
+                'mtime',
+                'ctime',
+                'uid',
+                'gid',
+                'nlink',
+            )
+            as $sKey
+        ) {
+            if (
+                (int)(
+                    $aBefore[$sKey]
+                    ?? -1
+                )
+                !==
+                (int)(
+                    $aAfter[$sKey]
+                    ?? -1
+                )
+            ) {
+                $aResult['error'] =
+                    'Runtime merge destination changed during verification.';
+
+                return $aResult;
+            }
+        }
+
+        $sExpectedSha256 =
+            strtolower(
+                (string)(
+                    $aEntry['sha256']
+                    ?? ''
+                )
+            );
+
+        $iExpectedSize =
+            (int)(
+                $aEntry['size']
+                ?? -1
+            );
+
+        $iExpectedMode =
+            octdec(
+                (string)(
+                    $aEntry['mode']
+                    ?? '0000'
+                )
+            );
+
+        $iExpectedUid =
+            (int)(
+                $aEntry['uid']
+                ?? -1
+            );
+
+        $iExpectedGid =
+            (int)(
+                $aEntry['gid']
+                ?? -1
+            );
+
+        $bMatches =
+            hash_equals(
+                $sExpectedSha256,
+                strtolower(
+                    $sActualSha256
+                )
+            )
+            && (int)$aAfter['size']
+                === $iExpectedSize
+            && (
+                (int)$aAfter['mode']
+                & 07777
+            ) === $iExpectedMode
+            && (int)$aAfter['uid']
+                === $iExpectedUid
+            && (int)$aAfter['gid']
+                === $iExpectedGid;
+
+        $aResult['ok'] =
+            true;
+
+        $aResult['state'] =
+            $bMatches
+                ? 'exact'
+                : 'mismatch';
+
+        $aResult['matches_manifest'] =
+            $bMatches;
+
+        $aResult['file'] =
+            (string)(
+                $aEntry['file']
+                ?? ''
+            );
+
+        $aResult['relative_path'] =
+            $sRelative;
+
+        $aResult['destination'] =
+            $sDestinationReal;
+
+        $aResult['actual_sha256'] =
+            strtolower(
+                $sActualSha256
+            );
+
+        $aResult['actual_size'] =
+            (int)$aAfter['size'];
+
+        $aResult['actual_mode'] =
+            sprintf(
+                '%04o',
+                (int)$aAfter['mode']
+                & 07777
+            );
+
+        $aResult['actual_uid'] =
+            (int)$aAfter['uid'];
+
+        $aResult['actual_gid'] =
+            (int)$aAfter['gid'];
+
+        $aResult['actual_dev'] =
+            (int)(
+                $aAfter['dev']
+                ?? -1
+            );
+
+        $aResult['actual_ino'] =
+            (int)(
+                $aAfter['ino']
+                ?? -1
+            );
+
+        $aResult['actual_nlink'] =
+            (int)(
+                $aAfter['nlink']
+                ?? -1
+            );
+
+        $aResult['actual_mtime'] =
+            (int)(
+                $aAfter['mtime']
+                ?? -1
+            );
+
+        $aResult['actual_ctime'] =
+            (int)(
+                $aAfter['ctime']
+                ?? -1
+            );
+
+        $aResult['entry'] =
+            $aEntry;
+
+        return $aResult;
+    }
+
+
+    protected function ensureRuntimeMergeLedger(
+        $iJournalId
+    ) {
+        $iJournalId = (int)$iJournalId;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'created' => false,
+            'reused' => false,
+            'journal_id' => $iJournalId,
+            'ledger_path' => '',
+            'ledger_id' => '',
+            'error' => '',
+        );
+
+        $aVerified =
+            $this->loadAndVerifyRuntimeMergeManifest(
+                $iJournalId
+            );
+
+        if (empty($aVerified['ok'])) {
+            $aResult['error'] =
+                'Runtime merge manifest could not be verified before ledger initialization: '
+                . (
+                    $aVerified['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $aState =
+            $aVerified['state']
+            ?? array();
+
+        $aMerge =
+            $aState['merge']
+            ?? array();
+
+        $aSafety =
+            $aState['safety']
+            ?? array();
+
+        $aProgress =
+            $aMerge['progress']
+            ?? array();
+
+        if (
+            !is_array($aState)
+            || !is_array($aMerge)
+            || !is_array($aSafety)
+            || !is_array($aProgress)
+            || ($aState['phase'] ?? '')
+                !== 'runtime_merging'
+            || empty($aState['runtime_moved'])
+        ) {
+            $aResult['error'] =
+                'Runtime merge journal state is incomplete for ledger initialization.';
+
+            return $aResult;
+        }
+
+        $sBasePath =
+            (string)(
+                $aSafety['base_path']
+                ?? ''
+            );
+
+        if (
+            $sBasePath === ''
+            || !is_dir($sBasePath)
+            || is_link($sBasePath)
+        ) {
+            $aResult['error'] =
+                'Runtime merge safety base is unavailable or unsafe.';
+
+            return $aResult;
+        }
+
+        $sBaseReal =
+            realpath($sBasePath);
+
+        if ($sBaseReal === false) {
+            $aResult['error'] =
+                'Runtime merge safety base could not be resolved.';
+
+            return $aResult;
+        }
+
+        $sLedgerPath =
+            $sBaseReal
+            . DIRECTORY_SEPARATOR
+            . 'runtime-merge-journal-'
+            . $iJournalId
+            . '-ledger.jsonl';
+
+        $aIdentity = array(
+            'schema' =>
+                'my_una_doctor_runtime_merge_ledger_v1',
+
+            'journal_id' =>
+                $iJournalId,
+
+            'module' =>
+                (string)(
+                    $aState['module']
+                    ?? ''
+                ),
+
+            'merge_plan_id' =>
+                (string)(
+                    $aMerge['merge_plan_id']
+                    ?? ''
+                ),
+
+            'execution_manifest_id' =>
+                (string)(
+                    $aMerge[
+                        'execution_manifest_id'
+                    ]
+                    ?? ''
+                ),
+
+            'manifest_file_sha256' =>
+                (string)(
+                    $aMerge[
+                        'manifest_file_sha256'
+                    ]
+                    ?? ''
+                ),
+
+            'manifest_count' =>
+                (int)(
+                    $aMerge['manifest_count']
+                    ?? 0
+                ),
+
+            'manifest_bytes' =>
+                (int)(
+                    $aMerge['manifest_bytes']
+                    ?? 0
+                ),
+
+            /*
+             * Use the durable merge start time rather than
+             * time() so retries produce the same header.
+             */
+            'started_at' =>
+                (int)(
+                    $aMerge['started_at']
+                    ?? 0
+                ),
+        );
+
+        $sIdentityJson =
+            json_encode(
+                $aIdentity,
+                JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        if ($sIdentityJson === false) {
+            $aResult['error'] =
+                'Runtime merge ledger identity could not be encoded.';
+
+            return $aResult;
+        }
+
+        $sLedgerId =
+            hash(
+                'sha256',
+                $sIdentityJson
+            );
+
+        $aHeader =
+            $aIdentity;
+
+        $aHeader['ledger_id'] =
+            $sLedgerId;
+
+        $aHeader['event'] =
+            'ledger_header';
+
+        $sHeaderJson =
+            json_encode(
+                $aHeader,
+                JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        if ($sHeaderJson === false) {
+            $aResult['error'] =
+                'Runtime merge ledger header could not be encoded.';
+
+            return $aResult;
+        }
+
+        $sHeaderLine =
+            $sHeaderJson . "\n";
+
+        $sStoredLedgerPath =
+            (string)(
+                $aMerge['ledger_path']
+                ?? ''
+            );
+
+        $sStoredLedgerId =
+            (string)(
+                $aMerge['ledger_id']
+                ?? ''
+            );
+
+        /*
+         * Journal metadata must be all-or-nothing.
+         */
+        if (
+            ($sStoredLedgerPath === '')
+            !== ($sStoredLedgerId === '')
+        ) {
+            $aResult['error'] =
+                'Runtime merge journal contains incomplete ledger identity.';
+
+            return $aResult;
+        }
+
+        if ($sStoredLedgerPath !== '') {
+            if (
+                $sStoredLedgerPath !== $sLedgerPath
+                || !hash_equals(
+                    $sLedgerId,
+                    $sStoredLedgerId
+                )
+            ) {
+                $aResult['error'] =
+                    'Runtime merge journal ledger identity does not match the current merge contract.';
+
+                return $aResult;
+            }
+        }
+
+        $verifyLedger = static function (
+            $sPath,
+            $sExpectedHeader,
+            $sExpectedLedgerId
+        ) {
+            $aVerify = array(
+                'ok' => false,
+                'error' => '',
+            );
+
+            if (
+                !is_file($sPath)
+                || is_link($sPath)
+            ) {
+                $aVerify['error'] =
+                    'Runtime merge ledger is not a safe regular file.';
+
+                return $aVerify;
+            }
+
+            $aStat =
+                @lstat($sPath);
+
+            if (
+                !is_array($aStat)
+                || (int)(
+                    $aStat['nlink']
+                    ?? 0
+                ) !== 1
+                || (
+                    (int)(
+                        $aStat['mode']
+                        ?? 0
+                    )
+                    & 07777
+                ) !== 0600
+            ) {
+                $aVerify['error'] =
+                    'Runtime merge ledger filesystem metadata is unsafe.';
+
+                return $aVerify;
+            }
+
+            $h =
+                @fopen(
+                    $sPath,
+                    'rb'
+                );
+
+            if ($h === false) {
+                $aVerify['error'] =
+                    'Runtime merge ledger could not be opened.';
+
+                return $aVerify;
+            }
+
+            $sFirstLine =
+                fgets($h);
+
+            @fclose($h);
+
+            if ($sFirstLine === false) {
+                $aVerify['error'] =
+                    'Runtime merge ledger header could not be read.';
+
+                return $aVerify;
+            }
+
+            $aHeader =
+                json_decode(
+                    rtrim(
+                        $sFirstLine,
+                        "\r\n"
+                    ),
+                    true
+                );
+
+            if (
+                !is_array($aHeader)
+                || (
+                    $aHeader['event']
+                    ?? ''
+                ) !== 'ledger_header'
+                || (
+                    $aHeader['schema']
+                    ?? ''
+                ) !==
+                    'my_una_doctor_runtime_merge_ledger_v1'
+                || !hash_equals(
+                    $sExpectedLedgerId,
+                    (string)(
+                        $aHeader['ledger_id']
+                        ?? ''
+                    )
+                )
+                || $sFirstLine
+                    !== $sExpectedHeader
+            ) {
+                $aVerify['error'] =
+                    'Runtime merge ledger header does not match the durable merge contract.';
+
+                return $aVerify;
+            }
+
+            $aVerify['ok'] = true;
+
+            return $aVerify;
+        };
+
+        if (
+            file_exists($sLedgerPath)
+            || is_link($sLedgerPath)
+        ) {
+            $aLedgerVerify =
+                $verifyLedger(
+                    $sLedgerPath,
+                    $sHeaderLine,
+                    $sLedgerId
+                );
+
+            if (empty($aLedgerVerify['ok'])) {
+                $aResult['error'] =
+                    $aLedgerVerify['error'];
+
+                return $aResult;
+            }
+
+            /*
+             * If the journal does not yet know this ledger,
+             * only the pristine header is acceptable. Any
+             * event beyond the header would be unjournaled
+             * mutation history and must fail closed.
+             */
+            if ($sStoredLedgerPath === '') {
+                $sExisting =
+                    @file_get_contents(
+                        $sLedgerPath
+                    );
+
+                if (
+                    $sExisting === false
+                    || $sExisting !== $sHeaderLine
+                ) {
+                    $aResult['error'] =
+                        'An unjournaled runtime merge ledger already contains events.';
+
+                    return $aResult;
+                }
+            }
+
+            $aResult['reused'] = true;
+        } else {
+            /*
+             * A brand-new ledger may be created only before
+             * any generated runtime file has been installed.
+             */
+            if (
+                (int)(
+                    $aProgress['copied_files']
+                    ?? -1
+                ) !== 0
+                || (int)(
+                    $aProgress['copied_bytes']
+                    ?? -1
+                ) !== 0
+                || !empty(
+                    $aProgress[
+                        'runtime_files_changed'
+                    ]
+                )
+            ) {
+                $aResult['error'] =
+                    'Runtime merge ledger cannot be created after runtime file mutation has begun.';
+
+                return $aResult;
+            }
+
+            try {
+                $sRandom =
+                    bin2hex(
+                        random_bytes(8)
+                    );
+            } catch (Throwable $e) {
+                $aResult['error'] =
+                    'Could not generate a secure temporary ledger name.';
+
+                return $aResult;
+            }
+
+            $sTemporary =
+                $sBaseReal
+                . DIRECTORY_SEPARATOR
+                . '.runtime-merge-ledger-'
+                . $iJournalId
+                . '-'
+                . getmypid()
+                . '-'
+                . $sRandom
+                . '.tmp';
+
+            $h =
+                @fopen(
+                    $sTemporary,
+                    'xb'
+                );
+
+            if ($h === false) {
+                $aResult['error'] =
+                    'Could not create temporary runtime merge ledger.';
+
+                return $aResult;
+            }
+
+            $iOffset = 0;
+            $iLength =
+                strlen(
+                    $sHeaderLine
+                );
+
+            $bWriteOk = true;
+
+            while ($iOffset < $iLength) {
+                $iWritten =
+                    @fwrite(
+                        $h,
+                        substr(
+                            $sHeaderLine,
+                            $iOffset
+                        )
+                    );
+
+                if (
+                    $iWritten === false
+                    || $iWritten <= 0
+                ) {
+                    $bWriteOk = false;
+                    break;
+                }
+
+                $iOffset +=
+                    $iWritten;
+            }
+
+            if ($bWriteOk)
+                $bWriteOk =
+                    @fflush($h);
+
+            if (
+                $bWriteOk
+                && function_exists('fsync')
+            ) {
+                $bWriteOk =
+                    @fsync($h);
+            }
+
+            @fclose($h);
+
+            if (!$bWriteOk) {
+                @unlink($sTemporary);
+
+                $aResult['error'] =
+                    'Could not durably write runtime merge ledger header.';
+
+                return $aResult;
+            }
+
+            if (
+                !@chmod(
+                    $sTemporary,
+                    0600
+                )
+            ) {
+                @unlink($sTemporary);
+
+                $aResult['error'] =
+                    'Could not secure temporary runtime merge ledger permissions.';
+
+                return $aResult;
+            }
+
+            /*
+             * Atomic create-without-overwrite on the same
+             * filesystem, matching the manifest publisher.
+             */
+            if (
+                !@link(
+                    $sTemporary,
+                    $sLedgerPath
+                )
+            ) {
+                @unlink($sTemporary);
+
+                $aResult['error'] =
+                    'Could not atomically publish runtime merge ledger.';
+
+                return $aResult;
+            }
+
+            @unlink($sTemporary);
+
+            clearstatcache(
+                true,
+                $sLedgerPath
+            );
+
+            $aLedgerVerify =
+                $verifyLedger(
+                    $sLedgerPath,
+                    $sHeaderLine,
+                    $sLedgerId
+                );
+
+            if (empty($aLedgerVerify['ok'])) {
+                $aResult['error'] =
+                    'Published runtime merge ledger failed verification: '
+                    . $aLedgerVerify['error'];
+
+                return $aResult;
+            }
+
+            $aResult['created'] = true;
+            $aResult['changes_applied'] = true;
+        }
+
+        /*
+         * If the journal already contains exact ledger
+         * metadata, no DB mutation is required.
+         */
+        if ($sStoredLedgerPath === '') {
+            $aState['merge']['ledger_schema'] =
+                'my_una_doctor_runtime_merge_ledger_v1';
+
+            $aState['merge']['ledger_path'] =
+                $sLedgerPath;
+
+            $aState['merge']['ledger_id'] =
+                $sLedgerId;
+
+            $aState['merge']['ledger_events'] =
+                0;
+
+            $sStateJson =
+                json_encode(
+                    $aState,
+                    JSON_UNESCAPED_SLASHES
+                    | JSON_UNESCAPED_UNICODE
+                    | JSON_INVALID_UTF8_SUBSTITUTE
+                );
+
+            if ($sStateJson === false) {
+                $aResult['error'] =
+                    'Runtime merge state could not be encoded with ledger identity.';
+
+                return $aResult;
+            }
+
+            try {
+                $this->requireRepairJournalUpdate(
+                    $iJournalId,
+                    array(
+                        'status' =>
+                            'runtime_merging',
+
+                        'result_json' =>
+                            $sStateJson,
+
+                        'error_text' =>
+                            '',
+                    )
+                );
+            } catch (Throwable $e) {
+                $aResult['error'] =
+                    'Runtime merge ledger was created but its journal identity could not be persisted: '
+                    . $e->getMessage();
+
+                return $aResult;
+            }
+
+            /*
+             * Independently verify the exact merge ledger
+             * identity survived the DB write.
+             */
+            $aJournalVerify =
+                $this->_oDb->getRow(
+                    "SELECT `status`, `result_json`
+                     FROM `my_una_doctor_repairs`
+                     WHERE `id` = ?
+                     LIMIT 1",
+                    array($iJournalId)
+                );
+
+            $aStateVerify =
+                json_decode(
+                    (string)(
+                        $aJournalVerify[
+                            'result_json'
+                        ]
+                        ?? ''
+                    ),
+                    true
+                );
+
+            $aMergeVerify =
+                is_array($aStateVerify)
+                    ? (
+                        $aStateVerify['merge']
+                        ?? array()
+                    )
+                    : array();
+
+            if (
+                empty($aJournalVerify)
+                || (string)(
+                    $aJournalVerify['status']
+                    ?? ''
+                ) !== 'runtime_merging'
+                || !is_array($aStateVerify)
+                || (
+                    $aStateVerify['phase']
+                    ?? ''
+                ) !== 'runtime_merging'
+                || !hash_equals(
+                    $sLedgerPath,
+                    (string)(
+                        $aMergeVerify[
+                            'ledger_path'
+                        ]
+                        ?? ''
+                    )
+                )
+                || !hash_equals(
+                    $sLedgerId,
+                    (string)(
+                        $aMergeVerify[
+                            'ledger_id'
+                        ]
+                        ?? ''
+                    )
+                )
+                || (int)(
+                    $aMergeVerify[
+                        'ledger_events'
+                    ]
+                    ?? -1
+                ) !== 0
+                || (int)(
+                    $aMergeVerify[
+                        'progress'
+                    ]['copied_files']
+                    ?? -1
+                ) !== 0
+                || !empty(
+                    $aMergeVerify[
+                        'progress'
+                    ]['runtime_files_changed']
+                )
+            ) {
+                $aResult['error'] =
+                    'Runtime merge ledger journal verification failed.';
+
+                return $aResult;
+            }
+
+            $aResult['changes_applied'] = true;
+        }
+
+        $aResult['ok'] = true;
+        $aResult['ledger_path'] =
+            $sLedgerPath;
+        $aResult['ledger_id'] =
+            $sLedgerId;
+
+        return $aResult;
+    }
+
+
+    protected function readAndVerifyRuntimeMergeLedger(
+        $iJournalId
+    ) {
+        $iJournalId = (int)$iJournalId;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'event_count' => 0,
+            'journal_event_count' => 0,
+            'unjournaled_events' => 0,
+            'events' => array(),
+            'entry_states' => array(),
+            'error' => '',
+        );
+
+        $aVerified =
+            $this->loadAndVerifyRuntimeMergeManifest(
+                $iJournalId
+            );
+
+        if (empty($aVerified['ok'])) {
+            $aResult['error'] =
+                'Runtime merge manifest could not be verified before reading the ledger: '
+                . (
+                    $aVerified['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $aState =
+            $aVerified['state']
+            ?? array();
+
+        $aMerge =
+            $aState['merge']
+            ?? array();
+
+        $aRuntime =
+            $aState['runtime']
+            ?? array();
+
+        $aManifest =
+            $aVerified['manifest']
+            ?? array();
+
+        if (
+            !is_array($aState)
+            || !is_array($aMerge)
+            || !is_array($aRuntime)
+            || !is_array($aManifest)
+            || ($aState['phase'] ?? '')
+                !== 'runtime_merging'
+        ) {
+            $aResult['error'] =
+                'Runtime merge state is incomplete for ledger verification.';
+
+            return $aResult;
+        }
+
+        $sLedgerPath =
+            (string)(
+                $aMerge['ledger_path']
+                ?? ''
+            );
+
+        $sLedgerId =
+            strtolower(
+                (string)(
+                    $aMerge['ledger_id']
+                    ?? ''
+                )
+            );
+
+        $sExecutionManifestId =
+            strtolower(
+                (string)(
+                    $aMerge[
+                        'execution_manifest_id'
+                    ]
+                    ?? ''
+                )
+            );
+
+        $iJournalEventCount =
+            (int)(
+                $aMerge['ledger_events']
+                ?? -1
+            );
+
+        if (
+            $sLedgerPath === ''
+            || strlen($sLedgerId) !== 64
+            || strlen($sExecutionManifestId) !== 64
+            || $iJournalEventCount < 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger identity is not journaled completely.';
+
+            return $aResult;
+        }
+
+        if (
+            !is_file($sLedgerPath)
+            || is_link($sLedgerPath)
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger is unavailable or unsafe.';
+
+            return $aResult;
+        }
+
+        $aLedgerStat =
+            @lstat($sLedgerPath);
+
+        if (
+            !is_array($aLedgerStat)
+            || (int)(
+                $aLedgerStat['nlink']
+                ?? 0
+            ) !== 1
+            || (
+                (int)(
+                    $aLedgerStat['mode']
+                    ?? 0
+                )
+                & 07777
+            ) !== 0600
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger filesystem metadata is unsafe.';
+
+            return $aResult;
+        }
+
+        $h =
+            @fopen(
+                $sLedgerPath,
+                'rb'
+            );
+
+        if ($h === false) {
+            $aResult['error'] =
+                'Runtime merge ledger could not be opened.';
+
+            return $aResult;
+        }
+
+        $sHeaderLine =
+            fgets($h);
+
+        if ($sHeaderLine === false) {
+            @fclose($h);
+
+            $aResult['error'] =
+                'Runtime merge ledger header is missing.';
+
+            return $aResult;
+        }
+
+        $aHeader =
+            json_decode(
+                rtrim(
+                    $sHeaderLine,
+                    "\r\n"
+                ),
+                true
+            );
+
+        if (
+            !is_array($aHeader)
+            || (
+                $aHeader['event']
+                ?? ''
+            ) !== 'ledger_header'
+            || (
+                $aHeader['schema']
+                ?? ''
+            ) !==
+                'my_una_doctor_runtime_merge_ledger_v1'
+            || (int)(
+                $aHeader['journal_id']
+                ?? 0
+            ) !== $iJournalId
+            || !hash_equals(
+                $sLedgerId,
+                strtolower(
+                    (string)(
+                        $aHeader['ledger_id']
+                        ?? ''
+                    )
+                )
+            )
+            || !hash_equals(
+                $sExecutionManifestId,
+                strtolower(
+                    (string)(
+                        $aHeader[
+                            'execution_manifest_id'
+                        ]
+                        ?? ''
+                    )
+                )
+            )
+            || !hash_equals(
+                (string)(
+                    $aMerge['merge_plan_id']
+                    ?? ''
+                ),
+                (string)(
+                    $aHeader['merge_plan_id']
+                    ?? ''
+                )
+            )
+            || !hash_equals(
+                (string)(
+                    $aMerge[
+                        'manifest_file_sha256'
+                    ]
+                    ?? ''
+                ),
+                (string)(
+                    $aHeader[
+                        'manifest_file_sha256'
+                    ]
+                    ?? ''
+                )
+            )
+            || (int)(
+                $aHeader['manifest_count']
+                ?? -1
+            ) !== (int)(
+                $aMerge['manifest_count']
+                ?? -2
+            )
+            || (int)(
+                $aHeader['manifest_bytes']
+                ?? -1
+            ) !== (int)(
+                $aMerge['manifest_bytes']
+                ?? -2
+            )
+        ) {
+            @fclose($h);
+
+            $aResult['error'] =
+                'Runtime merge ledger header does not match the journal contract.';
+
+            return $aResult;
+        }
+
+        /*
+         * Reproduce ledger_id from the same immutable identity
+         * used by ensureRuntimeMergeLedger().
+         */
+        $aIdentity =
+            $aHeader;
+
+        unset(
+            $aIdentity['ledger_id'],
+            $aIdentity['event']
+        );
+
+        $sIdentityJson =
+            json_encode(
+                $aIdentity,
+                JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        if (
+            $sIdentityJson === false
+            || !hash_equals(
+                $sLedgerId,
+                hash(
+                    'sha256',
+                    $sIdentityJson
+                )
+            )
+        ) {
+            @fclose($h);
+
+            $aResult['error'] =
+                'Runtime merge ledger ID could not be reproduced.';
+
+            return $aResult;
+        }
+
+        $sRuntimePath =
+            (string)(
+                $aRuntime['path']
+                ?? ''
+            );
+
+        if (
+            $sRuntimePath === ''
+            || !is_dir($sRuntimePath)
+            || is_link($sRuntimePath)
+        ) {
+            @fclose($h);
+
+            $aResult['error'] =
+                'Live runtime root is unavailable or unsafe during ledger verification.';
+
+            return $aResult;
+        }
+
+        $sRuntimeReal =
+            realpath($sRuntimePath);
+
+        if ($sRuntimeReal === false) {
+            @fclose($h);
+
+            $aResult['error'] =
+                'Live runtime root could not be resolved during ledger verification.';
+
+            return $aResult;
+        }
+
+        $aEvents = array();
+        $aEntryStates = array();
+        $iExpectedSequence = 1;
+
+        while (($sLine = fgets($h)) !== false) {
+            if (
+                $sLine === ''
+                || substr($sLine, -1) !== "\n"
+            ) {
+                @fclose($h);
+
+                $aResult['error'] =
+                    'Runtime merge ledger contains an incomplete event line.';
+
+                return $aResult;
+            }
+
+            $aEvent =
+                json_decode(
+                    rtrim(
+                        $sLine,
+                        "\r\n"
+                    ),
+                    true
+                );
+
+            if (
+                !is_array($aEvent)
+                || (
+                    $aEvent['schema']
+                    ?? ''
+                ) !==
+                    'my_una_doctor_runtime_merge_ledger_event_v1'
+                || !hash_equals(
+                    $sLedgerId,
+                    strtolower(
+                        (string)(
+                            $aEvent['ledger_id']
+                            ?? ''
+                        )
+                    )
+                )
+                || (int)(
+                    $aEvent['sequence']
+                    ?? 0
+                ) !== $iExpectedSequence
+            ) {
+                @fclose($h);
+
+                $aResult['error'] =
+                    'Runtime merge ledger contains an invalid or out-of-sequence event.';
+
+                return $aResult;
+            }
+
+            $sEvent =
+                (string)(
+                    $aEvent['event']
+                    ?? ''
+                );
+
+            $iManifestIndex =
+                (int)(
+                    $aEvent[
+                        'manifest_index'
+                    ]
+                    ?? -1
+                );
+
+            if (
+                !in_array(
+                    $sEvent,
+                    array(
+                        'intent',
+                        'installed',
+                        'rolled_back',
+                    ),
+                    true
+                )
+                || $iManifestIndex < 0
+                || !isset(
+                    $aManifest[
+                        $iManifestIndex
+                    ]
+                )
+                || !is_array(
+                    $aManifest[
+                        $iManifestIndex
+                    ]
+                )
+            ) {
+                @fclose($h);
+
+                $aResult['error'] =
+                    'Runtime merge ledger references an invalid event or manifest index.';
+
+                return $aResult;
+            }
+
+            $aManifestEntry =
+                $aManifest[
+                    $iManifestIndex
+                ];
+
+            $sRelative =
+                (string)(
+                    $aManifestEntry[
+                        'relative_path'
+                    ]
+                    ?? ''
+                );
+
+            $sExpectedDestination =
+                $sRuntimeReal
+                . DIRECTORY_SEPARATOR
+                . str_replace(
+                    '/',
+                    DIRECTORY_SEPARATOR,
+                    $sRelative
+                );
+
+            if (
+                (string)(
+                    $aEvent['file']
+                    ?? ''
+                ) !== (string)(
+                    $aManifestEntry[
+                        'file'
+                    ]
+                    ?? ''
+                )
+                || (string)(
+                    $aEvent['relative_path']
+                    ?? ''
+                ) !== $sRelative
+                || !hash_equals(
+                    strtolower(
+                        (string)(
+                            $aManifestEntry[
+                                'sha256'
+                            ]
+                            ?? ''
+                        )
+                    ),
+                    strtolower(
+                        (string)(
+                            $aEvent['sha256']
+                            ?? ''
+                        )
+                    )
+                )
+                || (int)(
+                    $aEvent['size']
+                    ?? -1
+                ) !== (int)(
+                    $aManifestEntry['size']
+                    ?? -2
+                )
+                || (string)(
+                    $aEvent['mode']
+                    ?? ''
+                ) !== (string)(
+                    $aManifestEntry['mode']
+                    ?? ''
+                )
+                || (int)(
+                    $aEvent['uid']
+                    ?? -1
+                ) !== (int)(
+                    $aManifestEntry['uid']
+                    ?? -2
+                )
+                || (int)(
+                    $aEvent['gid']
+                    ?? -1
+                ) !== (int)(
+                    $aManifestEntry['gid']
+                    ?? -2
+                )
+                || (string)(
+                    $aEvent['destination']
+                    ?? ''
+                ) !== $sExpectedDestination
+            ) {
+                @fclose($h);
+
+                $aResult['error'] =
+                    'Runtime merge ledger event does not match its immutable manifest entry.';
+
+                return $aResult;
+            }
+
+            if (
+                $sEvent === 'installed'
+                && (
+                    (int)(
+                        $aEvent['installed_dev']
+                        ?? -1
+                    ) < 0
+                    || (int)(
+                        $aEvent['installed_ino']
+                        ?? -1
+                    ) <= 0
+                    || (int)(
+                        $aEvent['installed_ctime']
+                        ?? -1
+                    ) < 0
+                )
+            ) {
+                @fclose($h);
+
+                $aResult['error'] =
+                    'Installed runtime merge ledger event has no filesystem identity.';
+
+                return $aResult;
+            }
+
+            $sPreviousState =
+                (string)(
+                    $aEntryStates[
+                        $iManifestIndex
+                    ]
+                    ?? ''
+                );
+
+            $bTransitionOk =
+                (
+                    $sEvent === 'intent'
+                    && (
+                        $sPreviousState === ''
+                        || $sPreviousState
+                            === 'rolled_back'
+                    )
+                )
+                || (
+                    $sEvent === 'installed'
+                    && $sPreviousState
+                        === 'intent'
+                )
+                || (
+                    $sEvent === 'rolled_back'
+                    && in_array(
+                        $sPreviousState,
+                        array(
+                            'intent',
+                            'installed',
+                        ),
+                        true
+                    )
+                );
+
+            if (!$bTransitionOk) {
+                @fclose($h);
+
+                $aResult['error'] =
+                    'Runtime merge ledger contains an invalid state transition for manifest entry '
+                    . $iManifestIndex
+                    . '.';
+
+                return $aResult;
+            }
+
+            $aEntryStates[
+                $iManifestIndex
+            ] = $sEvent;
+
+            $aEvents[] =
+                $aEvent;
+
+            $iExpectedSequence++;
+        }
+
+        if (!feof($h)) {
+            @fclose($h);
+
+            $aResult['error'] =
+                'Runtime merge ledger could not be read completely.';
+
+            return $aResult;
+        }
+
+        @fclose($h);
+
+        $iEventCount =
+            count($aEvents);
+
+        if ($iJournalEventCount > $iEventCount) {
+            $aResult['error'] =
+                'Runtime merge journal claims more ledger events than exist durably.';
+
+            return $aResult;
+        }
+
+        /*
+         * A durable ledger may be ahead of the DB after a crash
+         * between fsync() and journal update. Preserve this as
+         * explicit recovery information rather than pretending
+         * the histories are synchronized.
+         */
+        $aResult['ok'] = true;
+        $aResult['ledger_path'] =
+            $sLedgerPath;
+        $aResult['ledger_id'] =
+            $sLedgerId;
+        $aResult['event_count'] =
+            $iEventCount;
+        $aResult['journal_event_count'] =
+            $iJournalEventCount;
+        $aResult['unjournaled_events'] =
+            $iEventCount
+            - $iJournalEventCount;
+        $aResult['events'] =
+            $aEvents;
+        $aResult['entry_states'] =
+            $aEntryStates;
+        $aResult['manifest'] =
+            $aManifest;
+        $aResult['state'] =
+            $aState;
+
+        return $aResult;
+    }
+
+
+    protected function appendRuntimeMergeLedgerEvent(
+        $iJournalId,
+        $sEvent,
+        $iManifestIndex
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $sEvent = trim((string)$sEvent);
+        $iManifestIndex = (int)$iManifestIndex;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'event' => $sEvent,
+            'manifest_index' => $iManifestIndex,
+            'sequence' => 0,
+            'error' => '',
+        );
+
+        if (
+            !in_array(
+                $sEvent,
+                array(
+                    'intent',
+                    'installed',
+                    'rolled_back',
+                ),
+                true
+            )
+        ) {
+            $aResult['error'] =
+                'Unsupported runtime merge ledger event.';
+
+            return $aResult;
+        }
+
+        /*
+         * Get the journaled ledger path first, then lock the
+         * ledger for the complete verify -> append -> DB update
+         * transaction.
+         */
+        $aJournal =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        $aJournalState =
+            json_decode(
+                (string)(
+                    $aJournal['result_json']
+                    ?? ''
+                ),
+                true
+            );
+
+        $sLedgerPath =
+            is_array($aJournalState)
+                ? (string)(
+                    $aJournalState[
+                        'merge'
+                    ]['ledger_path']
+                    ?? ''
+                )
+                : '';
+
+        if (
+            empty($aJournal)
+            || (string)(
+                $aJournal['status']
+                ?? ''
+            ) !== 'runtime_merging'
+            || $sLedgerPath === ''
+            || !is_file($sLedgerPath)
+            || is_link($sLedgerPath)
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger is not ready for event append.';
+
+            return $aResult;
+        }
+
+        $h =
+            @fopen(
+                $sLedgerPath,
+                'c+b'
+            );
+
+        if ($h === false) {
+            $aResult['error'] =
+                'Runtime merge ledger could not be opened for append.';
+
+            return $aResult;
+        }
+
+        if (!@flock($h, LOCK_EX)) {
+            @fclose($h);
+
+            $aResult['error'] =
+                'Runtime merge ledger could not be locked.';
+
+            return $aResult;
+        }
+
+        /*
+         * Re-read everything while this writer owns the ledger
+         * lock. A prior crash may have left a durable event ahead
+         * of the DB; that requires recovery, not another append.
+         */
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (
+            empty($aLedger['ok'])
+            || (int)(
+                $aLedger['unjournaled_events']
+                ?? -1
+            ) !== 0
+        ) {
+            @flock($h, LOCK_UN);
+            @fclose($h);
+
+            $aResult['error'] =
+                !empty($aLedger['error'])
+                    ? (string)$aLedger['error']
+                    : 'Runtime merge ledger has an unjournaled durable tail and requires recovery.';
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aLedger['manifest']
+            ?? array();
+
+        if (
+            $iManifestIndex < 0
+            || !isset($aManifest[$iManifestIndex])
+            || !is_array(
+                $aManifest[$iManifestIndex]
+            )
+        ) {
+            @flock($h, LOCK_UN);
+            @fclose($h);
+
+            $aResult['error'] =
+                'Runtime merge ledger event references an invalid manifest index.';
+
+            return $aResult;
+        }
+
+        $sPreviousState =
+            (string)(
+                $aLedger[
+                    'entry_states'
+                ][$iManifestIndex]
+                ?? ''
+            );
+
+        $bTransitionOk =
+            (
+                $sEvent === 'intent'
+                && (
+                    $sPreviousState === ''
+                    || $sPreviousState
+                        === 'rolled_back'
+                )
+            )
+            || (
+                $sEvent === 'installed'
+                && $sPreviousState
+                    === 'intent'
+            )
+            || (
+                $sEvent === 'rolled_back'
+                && in_array(
+                    $sPreviousState,
+                    array(
+                        'intent',
+                        'installed',
+                    ),
+                    true
+                )
+            );
+
+        if (!$bTransitionOk) {
+            @flock($h, LOCK_UN);
+            @fclose($h);
+
+            $aResult['error'] =
+                'Runtime merge ledger state transition is not allowed.';
+
+            return $aResult;
+        }
+
+        /*
+         * Tie every event to the current filesystem proof.
+         */
+        $aDestination =
+            $this->inspectRuntimeMergeDestinationEntry(
+                $iJournalId,
+                $iManifestIndex
+            );
+
+        $sRequiredState =
+            $sEvent === 'installed'
+                ? 'exact'
+                : 'absent';
+
+        if (
+            empty($aDestination['ok'])
+            || (string)(
+                $aDestination['state']
+                ?? ''
+            ) !== $sRequiredState
+        ) {
+            @flock($h, LOCK_UN);
+            @fclose($h);
+
+            $aResult['error'] =
+                'Runtime merge ledger event refused because destination state is not '
+                . $sRequiredState
+                . '.';
+
+            return $aResult;
+        }
+
+        $aEntry =
+            $aManifest[$iManifestIndex];
+
+        $iSequence =
+            (int)(
+                $aLedger['event_count']
+                ?? 0
+            )
+            + 1;
+
+        $aEvent = array(
+            'schema' =>
+                'my_una_doctor_runtime_merge_ledger_event_v1',
+
+            'ledger_id' =>
+                (string)(
+                    $aLedger['ledger_id']
+                    ?? ''
+                ),
+
+            'sequence' =>
+                $iSequence,
+
+            'event' =>
+                $sEvent,
+
+            'manifest_index' =>
+                $iManifestIndex,
+
+            'file' =>
+                (string)(
+                    $aEntry['file']
+                    ?? ''
+                ),
+
+            'relative_path' =>
+                (string)(
+                    $aEntry['relative_path']
+                    ?? ''
+                ),
+
+            'sha256' =>
+                (string)(
+                    $aEntry['sha256']
+                    ?? ''
+                ),
+
+            'size' =>
+                (int)(
+                    $aEntry['size']
+                    ?? 0
+                ),
+
+            'mode' =>
+                (string)(
+                    $aEntry['mode']
+                    ?? ''
+                ),
+
+            'uid' =>
+                (int)(
+                    $aEntry['uid']
+                    ?? -1
+                ),
+
+            'gid' =>
+                (int)(
+                    $aEntry['gid']
+                    ?? -1
+                ),
+
+            'destination' =>
+                (string)(
+                    $aDestination[
+                        'destination'
+                    ]
+                    ?? ''
+                ),
+
+            'installed_dev' =>
+                $sEvent === 'installed'
+                    ? (int)(
+                        $aDestination['actual_dev']
+                        ?? -1
+                    )
+                    : 0,
+
+            'installed_ino' =>
+                $sEvent === 'installed'
+                    ? (int)(
+                        $aDestination['actual_ino']
+                        ?? -1
+                    )
+                    : 0,
+
+            'installed_ctime' =>
+                $sEvent === 'installed'
+                    ? (int)(
+                        $aDestination['actual_ctime']
+                        ?? -1
+                    )
+                    : 0,
+
+            'recorded_at' =>
+                time(),
+        );
+
+        $sLine =
+            json_encode(
+                $aEvent,
+                JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        if ($sLine === false) {
+            @flock($h, LOCK_UN);
+            @fclose($h);
+
+            $aResult['error'] =
+                'Runtime merge ledger event could not be encoded.';
+
+            return $aResult;
+        }
+
+        $sLine .= "\n";
+
+        if (
+            @fseek($h, 0, SEEK_END) !== 0
+        ) {
+            @flock($h, LOCK_UN);
+            @fclose($h);
+
+            $aResult['error'] =
+                'Runtime merge ledger could not seek to its append position.';
+
+            return $aResult;
+        }
+
+        $iOffset = 0;
+        $iLength = strlen($sLine);
+        $bWriteOk = true;
+
+        while ($iOffset < $iLength) {
+            $iWritten =
+                @fwrite(
+                    $h,
+                    substr(
+                        $sLine,
+                        $iOffset
+                    )
+                );
+
+            if (
+                $iWritten === false
+                || $iWritten <= 0
+            ) {
+                $bWriteOk = false;
+                break;
+            }
+
+            $iOffset += $iWritten;
+        }
+
+        if ($bWriteOk)
+            $bWriteOk = @fflush($h);
+
+        if (
+            $bWriteOk
+            && function_exists('fsync')
+        ) {
+            $bWriteOk = @fsync($h);
+        }
+
+        if (!$bWriteOk) {
+            @flock($h, LOCK_UN);
+            @fclose($h);
+
+            $aResult['error'] =
+                'Runtime merge ledger event could not be durably appended.';
+
+            return $aResult;
+        }
+
+        /*
+         * The ledger event is now durable. Advance only the
+         * compact journal ledger counter. Runtime copy progress
+         * is deliberately managed separately.
+         */
+        $aState =
+            $aLedger['state']
+            ?? array();
+
+        $aState['merge']['ledger_events'] =
+            $iSequence;
+
+        $sStateJson =
+            json_encode(
+                $aState,
+                JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        if ($sStateJson === false) {
+            @flock($h, LOCK_UN);
+            @fclose($h);
+
+            $aResult['error'] =
+                'Ledger event is durable but merge journal state could not be encoded. Recovery is required.';
+
+            return $aResult;
+        }
+
+        try {
+            $this->requireRepairJournalUpdate(
+                $iJournalId,
+                array(
+                    'status' =>
+                        'runtime_merging',
+
+                    'result_json' =>
+                        $sStateJson,
+
+                    'error_text' =>
+                        '',
+                )
+            );
+        } catch (Throwable $e) {
+            @flock($h, LOCK_UN);
+            @fclose($h);
+
+            $aResult['error'] =
+                'Ledger event is durable but journal advancement failed. Recovery is required: '
+                . $e->getMessage();
+
+            return $aResult;
+        }
+
+        /*
+         * Independent verification: the durable ledger and DB
+         * must now agree exactly.
+         */
+        $aVerify =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (
+            empty($aVerify['ok'])
+            || (int)(
+                $aVerify['event_count']
+                ?? -1
+            ) !== $iSequence
+            || (int)(
+                $aVerify['journal_event_count']
+                ?? -1
+            ) !== $iSequence
+            || (int)(
+                $aVerify['unjournaled_events']
+                ?? -1
+            ) !== 0
+            || (string)(
+                $aVerify[
+                    'entry_states'
+                ][$iManifestIndex]
+                ?? ''
+            ) !== $sEvent
+        ) {
+            @flock($h, LOCK_UN);
+            @fclose($h);
+
+            $aResult['error'] =
+                'Runtime merge ledger event journal verification failed.';
+
+            return $aResult;
+        }
+
+        @flock($h, LOCK_UN);
+        @fclose($h);
+
+        $aResult['ok'] = true;
+        $aResult['changes_applied'] = true;
+        $aResult['sequence'] =
+            $iSequence;
+        $aResult['ledger_id'] =
+            (string)(
+                $aVerify['ledger_id']
+                ?? ''
+            );
+
+        return $aResult;
+    }
+
+
+    protected function appendRuntimeMergeLedgerEventFromSession(
+        array &$aSession,
+        $hLedger,
+        $sEvent,
+        $iManifestIndex
+    ) {
+        $sEvent =
+            trim(
+                (string)$sEvent
+            );
+
+        $iManifestIndex =
+            (int)$iManifestIndex;
+
+        $iJournalId =
+            (int)(
+                $aSession['journal_id']
+                ?? 0
+            );
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'event' => $sEvent,
+            'manifest_index' => $iManifestIndex,
+            'sequence' => 0,
+            'ledger_file_bytes' => 0,
+            'error' => '',
+        );
+
+        if (
+            empty($aSession['ok'])
+            || $iJournalId <= 0
+            || empty($aSession['session_id'])
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch session is invalid.';
+
+            return $aResult;
+        }
+
+        if (
+            !in_array(
+                $sEvent,
+                array(
+                    'intent',
+                    'installed',
+                    'rolled_back',
+                ),
+                true
+            )
+        ) {
+            $aResult['error'] =
+                'Unsupported runtime merge ledger event.';
+
+            return $aResult;
+        }
+
+        if (!is_resource($hLedger)) {
+            $aResult['error'] =
+                'Runtime merge ledger lock handle is invalid.';
+
+            return $aResult;
+        }
+
+        /*
+         * The future optimized batch executor owns this lock for
+         * the entire bounded batch. Reassert it non-blockingly
+         * here but deliberately do not release it here.
+         */
+        if (
+            !@flock(
+                $hLedger,
+                LOCK_EX | LOCK_NB
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger is not exclusively locked by the batch session.';
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aSession['manifest']
+            ?? array();
+
+        if (
+            $iManifestIndex < 0
+            || !isset($aManifest[$iManifestIndex])
+            || !is_array(
+                $aManifest[$iManifestIndex]
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger event references an invalid manifest index.';
+
+            return $aResult;
+        }
+
+        $aEntry =
+            $aManifest[$iManifestIndex];
+
+        $sLedgerPath =
+            (string)(
+                $aSession['ledger_path']
+                ?? ''
+            );
+
+        $aIdentity =
+            $aSession['identity']
+            ?? array();
+
+        $sExpectedLedgerId =
+            (string)(
+                $aIdentity['ledger_id']
+                ?? ''
+            );
+
+        $sExpectedExecutionId =
+            (string)(
+                $aIdentity[
+                    'execution_manifest_id'
+                ]
+                ?? ''
+            );
+
+        $sExpectedManifestHash =
+            (string)(
+                $aIdentity[
+                    'manifest_file_sha256'
+                ]
+                ?? ''
+            );
+
+        $iExpectedLedgerDev =
+            (int)(
+                $aIdentity['ledger_dev']
+                ?? -1
+            );
+
+        $iExpectedLedgerIno =
+            (int)(
+                $aIdentity['ledger_ino']
+                ?? -1
+            );
+
+        $iExpectedBytes =
+            (int)(
+                $aSession[
+                    'ledger_file_bytes'
+                ]
+                ?? -1
+            );
+
+        $iPreviousSequence =
+            (int)(
+                $aSession[
+                    'ledger_event_count'
+                ]
+                ?? -1
+            );
+
+        if (
+            $sLedgerPath === ''
+            || !is_file($sLedgerPath)
+            || is_link($sLedgerPath)
+            || $sExpectedLedgerId === ''
+            || strlen($sExpectedExecutionId) !== 64
+            || strlen($sExpectedManifestHash) !== 64
+            || $iExpectedBytes < 1
+            || $iPreviousSequence < 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch session ledger boundary is incomplete.';
+
+            return $aResult;
+        }
+
+        /*
+         * Constant-time boundary proof under the exclusive lock:
+         * the pathname and open handle must still reference the
+         * exact ledger inode captured at session preparation.
+         */
+        clearstatcache(
+            true,
+            $sLedgerPath
+        );
+
+        $aPathStat =
+            @lstat(
+                $sLedgerPath
+            );
+
+        $aHandleStat =
+            @fstat(
+                $hLedger
+            );
+
+        if (
+            !is_array($aPathStat)
+            || !is_array($aHandleStat)
+            || (int)(
+                $aPathStat['dev']
+                ?? -1
+            ) !== $iExpectedLedgerDev
+            || (int)(
+                $aPathStat['ino']
+                ?? -1
+            ) !== $iExpectedLedgerIno
+            || (int)(
+                $aHandleStat['dev']
+                ?? -2
+            ) !== $iExpectedLedgerDev
+            || (int)(
+                $aHandleStat['ino']
+                ?? -2
+            ) !== $iExpectedLedgerIno
+            || (int)(
+                $aPathStat['nlink']
+                ?? 0
+            ) !== 1
+            || (int)(
+                $aHandleStat['nlink']
+                ?? 0
+            ) !== 1
+            || (
+                (int)$aPathStat['mode']
+                & 07777
+            ) !== 0600
+            || (
+                (int)$aHandleStat['mode']
+                & 07777
+            ) !== 0600
+            || (int)(
+                $aPathStat['size']
+                ?? -1
+            ) !== $iExpectedBytes
+            || (int)(
+                $aHandleStat['size']
+                ?? -1
+            ) !== $iExpectedBytes
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger no longer matches the locked batch-session boundary.';
+
+            return $aResult;
+        }
+
+        /*
+         * The DB ledger counter must agree with the in-memory
+         * locked boundary before another event is permitted.
+         */
+        $aJournal =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        $aJournalState =
+            json_decode(
+                (string)(
+                    $aJournal['result_json']
+                    ?? ''
+                ),
+                true
+            );
+
+        $aJournalMerge =
+            is_array($aJournalState)
+                ? (
+                    $aJournalState['merge']
+                    ?? array()
+                )
+                : array();
+
+        if (
+            empty($aJournal)
+            || (string)(
+                $aJournal['status']
+                ?? ''
+            ) !== 'runtime_merging'
+            || !is_array($aJournalState)
+            || (
+                $aJournalState['phase']
+                ?? ''
+            ) !== 'runtime_merging'
+            || empty(
+                $aJournalState[
+                    'runtime_moved'
+                ]
+            )
+            || (string)(
+                $aJournalMerge['ledger_path']
+                ?? ''
+            ) !== $sLedgerPath
+            || (string)(
+                $aJournalMerge['ledger_id']
+                ?? ''
+            ) !== $sExpectedLedgerId
+            || (string)(
+                $aJournalMerge[
+                    'execution_manifest_id'
+                ]
+                ?? ''
+            ) !== $sExpectedExecutionId
+            || (string)(
+                $aJournalMerge[
+                    'manifest_file_sha256'
+                ]
+                ?? ''
+            ) !== $sExpectedManifestHash
+            || (int)(
+                $aJournalMerge[
+                    'ledger_events'
+                ]
+                ?? -1
+            ) !== $iPreviousSequence
+        ) {
+            $aResult['error'] =
+                'Runtime merge journal no longer matches the locked batch-session boundary.';
+
+            return $aResult;
+        }
+
+        $sPreviousState =
+            (string)(
+                $aSession[
+                    'entry_states'
+                ][$iManifestIndex]
+                ?? ''
+            );
+
+        $bTransitionOk =
+            (
+                $sEvent === 'intent'
+                && (
+                    $sPreviousState === ''
+                    || $sPreviousState
+                        === 'rolled_back'
+                )
+            )
+            || (
+                $sEvent === 'installed'
+                && $sPreviousState
+                    === 'intent'
+            )
+            || (
+                $sEvent === 'rolled_back'
+                && in_array(
+                    $sPreviousState,
+                    array(
+                        'intent',
+                        'installed',
+                    ),
+                    true
+                )
+            );
+
+        if (!$bTransitionOk) {
+            $aResult['error'] =
+                'Runtime merge ledger state transition is not allowed.';
+
+            return $aResult;
+        }
+
+        /*
+         * Same destination proof as the reference appender,
+         * using the already-verified session manifest.
+         */
+        $aDestination =
+            $this->inspectRuntimeMergeDestinationEntryFromSession(
+                $aSession,
+                $iManifestIndex
+            );
+
+        $sRequiredState =
+            $sEvent === 'installed'
+                ? 'exact'
+                : 'absent';
+
+        if (
+            empty($aDestination['ok'])
+            || (string)(
+                $aDestination['state']
+                ?? ''
+            ) !== $sRequiredState
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger event refused because destination state is not '
+                . $sRequiredState
+                . '.';
+
+            return $aResult;
+        }
+
+        $iSequence =
+            $iPreviousSequence + 1;
+
+        $aEvent = array(
+            'schema' =>
+                'my_una_doctor_runtime_merge_ledger_event_v1',
+
+            'ledger_id' =>
+                $sExpectedLedgerId,
+
+            'sequence' =>
+                $iSequence,
+
+            'event' =>
+                $sEvent,
+
+            'manifest_index' =>
+                $iManifestIndex,
+
+            'file' =>
+                (string)(
+                    $aEntry['file']
+                    ?? ''
+                ),
+
+            'relative_path' =>
+                (string)(
+                    $aEntry['relative_path']
+                    ?? ''
+                ),
+
+            'sha256' =>
+                (string)(
+                    $aEntry['sha256']
+                    ?? ''
+                ),
+
+            'size' =>
+                (int)(
+                    $aEntry['size']
+                    ?? 0
+                ),
+
+            'mode' =>
+                (string)(
+                    $aEntry['mode']
+                    ?? ''
+                ),
+
+            'uid' =>
+                (int)(
+                    $aEntry['uid']
+                    ?? -1
+                ),
+
+            'gid' =>
+                (int)(
+                    $aEntry['gid']
+                    ?? -1
+                ),
+
+            'destination' =>
+                (string)(
+                    $aDestination[
+                        'destination'
+                    ]
+                    ?? ''
+                ),
+
+            'installed_dev' =>
+                $sEvent === 'installed'
+                    ? (int)(
+                        $aDestination[
+                            'actual_dev'
+                        ]
+                        ?? -1
+                    )
+                    : 0,
+
+            'installed_ino' =>
+                $sEvent === 'installed'
+                    ? (int)(
+                        $aDestination[
+                            'actual_ino'
+                        ]
+                        ?? -1
+                    )
+                    : 0,
+
+            'installed_ctime' =>
+                $sEvent === 'installed'
+                    ? (int)(
+                        $aDestination[
+                            'actual_ctime'
+                        ]
+                        ?? -1
+                    )
+                    : 0,
+
+            'recorded_at' =>
+                time(),
+        );
+
+        $sLine =
+            json_encode(
+                $aEvent,
+                JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        if ($sLine === false) {
+            $aResult['error'] =
+                'Runtime merge ledger event could not be encoded.';
+
+            return $aResult;
+        }
+
+        $sLine .= "\n";
+
+        /*
+         * The append must begin at exactly the byte boundary
+         * established by this locked session.
+         */
+        if (
+            @fseek(
+                $hLedger,
+                0,
+                SEEK_END
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger could not seek to its append position.';
+
+            return $aResult;
+        }
+
+        $iStartOffset =
+            @ftell(
+                $hLedger
+            );
+
+        if (
+            $iStartOffset === false
+            || (int)$iStartOffset
+                !== $iExpectedBytes
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger append offset does not match the batch-session boundary.';
+
+            return $aResult;
+        }
+
+        $iOffset = 0;
+        $iLength =
+            strlen($sLine);
+
+        $bWriteOk =
+            true;
+
+        while ($iOffset < $iLength) {
+            $iWritten =
+                @fwrite(
+                    $hLedger,
+                    substr(
+                        $sLine,
+                        $iOffset
+                    )
+                );
+
+            if (
+                $iWritten === false
+                || $iWritten <= 0
+            ) {
+                $bWriteOk =
+                    false;
+                break;
+            }
+
+            $iOffset +=
+                $iWritten;
+        }
+
+        if ($bWriteOk)
+            $bWriteOk =
+                @fflush($hLedger);
+
+        if (
+            $bWriteOk
+            && function_exists('fsync')
+        ) {
+            $bWriteOk =
+                @fsync($hLedger);
+        }
+
+        if (!$bWriteOk) {
+            $aResult['error'] =
+                'Runtime merge ledger event could not be durably appended. Recovery is required.';
+
+            return $aResult;
+        }
+
+        /*
+         * Constant-size durable-byte verification: reread only
+         * the line Doctor just appended, not the entire ledger.
+         */
+        if (
+            @fseek(
+                $hLedger,
+                $iExpectedBytes,
+                SEEK_SET
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger event is durable but could not be reread for verification. Recovery is required.';
+
+            return $aResult;
+        }
+
+        $sReadBack = '';
+
+        while (
+            strlen($sReadBack)
+            < $iLength
+        ) {
+            $sChunk =
+                @fread(
+                    $hLedger,
+                    $iLength
+                    - strlen($sReadBack)
+                );
+
+            if (
+                $sChunk === false
+                || $sChunk === ''
+            ) {
+                break;
+            }
+
+            $sReadBack .=
+                $sChunk;
+        }
+
+        if (
+            strlen($sReadBack)
+                !== $iLength
+            || !hash_equals(
+                $sLine,
+                $sReadBack
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger event durable-byte verification failed. Recovery is required.';
+
+            return $aResult;
+        }
+
+        $iNewBytes =
+            $iExpectedBytes
+            + $iLength;
+
+        clearstatcache(
+            true,
+            $sLedgerPath
+        );
+
+        $aAfterPath =
+            @lstat(
+                $sLedgerPath
+            );
+
+        $aAfterHandle =
+            @fstat(
+                $hLedger
+            );
+
+        if (
+            !is_array($aAfterPath)
+            || !is_array($aAfterHandle)
+            || (int)(
+                $aAfterPath['dev']
+                ?? -1
+            ) !== $iExpectedLedgerDev
+            || (int)(
+                $aAfterPath['ino']
+                ?? -1
+            ) !== $iExpectedLedgerIno
+            || (int)(
+                $aAfterHandle['dev']
+                ?? -2
+            ) !== $iExpectedLedgerDev
+            || (int)(
+                $aAfterHandle['ino']
+                ?? -2
+            ) !== $iExpectedLedgerIno
+            || (int)(
+                $aAfterPath['nlink']
+                ?? 0
+            ) !== 1
+            || (int)(
+                $aAfterHandle['nlink']
+                ?? 0
+            ) !== 1
+            || (int)(
+                $aAfterPath['size']
+                ?? -1
+            ) !== $iNewBytes
+            || (int)(
+                $aAfterHandle['size']
+                ?? -1
+            ) !== $iNewBytes
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger event is durable but the resulting ledger boundary is invalid. Recovery is required.';
+
+            return $aResult;
+        }
+
+        /*
+         * Re-read the journal after the durable append so an
+         * unrelated concurrent journal mutation is never
+         * overwritten by stale session JSON.
+         */
+        $aFreshJournal =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        $aFreshState =
+            json_decode(
+                (string)(
+                    $aFreshJournal[
+                        'result_json'
+                    ]
+                    ?? ''
+                ),
+                true
+            );
+
+        $aFreshMerge =
+            is_array($aFreshState)
+                ? (
+                    $aFreshState['merge']
+                    ?? array()
+                )
+                : array();
+
+        if (
+            empty($aFreshJournal)
+            || (string)(
+                $aFreshJournal['status']
+                ?? ''
+            ) !== 'runtime_merging'
+            || !is_array($aFreshState)
+            || (
+                $aFreshState['phase']
+                ?? ''
+            ) !== 'runtime_merging'
+            || (string)(
+                $aFreshMerge['ledger_path']
+                ?? ''
+            ) !== $sLedgerPath
+            || (string)(
+                $aFreshMerge['ledger_id']
+                ?? ''
+            ) !== $sExpectedLedgerId
+            || (string)(
+                $aFreshMerge[
+                    'execution_manifest_id'
+                ]
+                ?? ''
+            ) !== $sExpectedExecutionId
+            || (string)(
+                $aFreshMerge[
+                    'manifest_file_sha256'
+                ]
+                ?? ''
+            ) !== $sExpectedManifestHash
+            || (int)(
+                $aFreshMerge[
+                    'ledger_events'
+                ]
+                ?? -1
+            ) !== $iPreviousSequence
+        ) {
+            $aResult['error'] =
+                'Ledger event is durable but the merge journal changed before acknowledgement. Recovery is required.';
+
+            return $aResult;
+        }
+
+        /*
+         * Only now acknowledge the durable event in the DB.
+         */
+        $aFreshState['merge']['ledger_events'] =
+            $iSequence;
+
+        $sStateJson =
+            json_encode(
+                $aFreshState,
+                JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        if ($sStateJson === false) {
+            $aResult['error'] =
+                'Ledger event is durable but merge journal state could not be encoded. Recovery is required.';
+
+            return $aResult;
+        }
+
+        try {
+            $this->requireRepairJournalUpdate(
+                $iJournalId,
+                array(
+                    'status' =>
+                        'runtime_merging',
+
+                    'result_json' =>
+                        $sStateJson,
+
+                    'error_text' =>
+                        '',
+                )
+            );
+        } catch (Throwable $e) {
+            $aResult['error'] =
+                'Ledger event is durable but journal advancement failed. Recovery is required: '
+                . $e->getMessage();
+
+            return $aResult;
+        }
+
+        /*
+         * Independent DB verification without reparsing the
+         * ledger or immutable manifest.
+         */
+        $aVerifyJournal =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        $aVerifyState =
+            json_decode(
+                (string)(
+                    $aVerifyJournal[
+                        'result_json'
+                    ]
+                    ?? ''
+                ),
+                true
+            );
+
+        $aVerifyMerge =
+            is_array($aVerifyState)
+                ? (
+                    $aVerifyState['merge']
+                    ?? array()
+                )
+                : array();
+
+        if (
+            empty($aVerifyJournal)
+            || (string)(
+                $aVerifyJournal['status']
+                ?? ''
+            ) !== 'runtime_merging'
+            || !is_array($aVerifyState)
+            || (
+                $aVerifyState['phase']
+                ?? ''
+            ) !== 'runtime_merging'
+            || (int)(
+                $aVerifyMerge[
+                    'ledger_events'
+                ]
+                ?? -1
+            ) !== $iSequence
+            || (string)(
+                $aVerifyMerge['ledger_path']
+                ?? ''
+            ) !== $sLedgerPath
+            || (string)(
+                $aVerifyMerge['ledger_id']
+                ?? ''
+            ) !== $sExpectedLedgerId
+            || (string)(
+                $aVerifyMerge[
+                    'execution_manifest_id'
+                ]
+                ?? ''
+            ) !== $sExpectedExecutionId
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger event journal verification failed.';
+
+            return $aResult;
+        }
+
+        /*
+         * Advance the in-memory locked session only after both
+         * durable ledger and DB acknowledgement are proven.
+         */
+        $aSession['ledger_event_count'] =
+            $iSequence;
+
+        $aSession['ledger_file_bytes'] =
+            $iNewBytes;
+
+        $aSession[
+            'entry_states'
+        ][$iManifestIndex] =
+            $sEvent;
+
+        $aSession['state'] =
+            $aVerifyState;
+
+        $aSession['session_mutated'] =
+            true;
+
+        /*
+         * Maintain useful in-memory state counts for the future
+         * optimized progress writer.
+         */
+        if ($sEvent === 'intent') {
+            $aSession[
+                'intent_origins'
+            ][$iManifestIndex] =
+                $sPreviousState;
+
+            if ($sPreviousState === '') {
+                $aSession['untouched_count'] =
+                    max(
+                        0,
+                        (int)(
+                            $aSession[
+                                'untouched_count'
+                            ]
+                            ?? 0
+                        ) - 1
+                    );
+            } elseif (
+                $sPreviousState
+                    === 'rolled_back'
+            ) {
+                $aSession['rolled_back_count'] =
+                    max(
+                        0,
+                        (int)(
+                            $aSession[
+                                'rolled_back_count'
+                            ]
+                            ?? 0
+                        ) - 1
+                    );
+            }
+        } elseif ($sEvent === 'installed') {
+            $aSession['installed_count'] =
+                (int)(
+                    $aSession[
+                        'installed_count'
+                    ]
+                    ?? 0
+                ) + 1;
+
+            $aSession['installed_bytes'] =
+                (int)(
+                    $aSession[
+                        'installed_bytes'
+                    ]
+                    ?? 0
+                )
+                + (int)(
+                    $aEntry['size']
+                    ?? 0
+                );
+
+            unset(
+                $aSession[
+                    'intent_origins'
+                ][$iManifestIndex]
+            );
+        } elseif (
+            $sEvent === 'rolled_back'
+        ) {
+            if (
+                $sPreviousState
+                    === 'installed'
+            ) {
+                $aSession['installed_count'] =
+                    max(
+                        0,
+                        (int)(
+                            $aSession[
+                                'installed_count'
+                            ]
+                            ?? 0
+                        ) - 1
+                    );
+
+                $aSession['installed_bytes'] =
+                    max(
+                        0,
+                        (int)(
+                            $aSession[
+                                'installed_bytes'
+                            ]
+                            ?? 0
+                        )
+                        - (int)(
+                            $aEntry['size']
+                            ?? 0
+                        )
+                    );
+            }
+
+            $aSession['rolled_back_count'] =
+                (int)(
+                    $aSession[
+                        'rolled_back_count'
+                    ]
+                    ?? 0
+                ) + 1;
+
+            unset(
+                $aSession[
+                    'intent_origins'
+                ][$iManifestIndex]
+            );
+        }
+
+        $aResult['ok'] =
+            true;
+
+        $aResult['changes_applied'] =
+            true;
+
+        $aResult['sequence'] =
+            $iSequence;
+
+        $aResult['ledger_id'] =
+            $sExpectedLedgerId;
+
+        $aResult['ledger_file_bytes'] =
+            $iNewBytes;
+
+        $aResult['event_record'] =
+            $aEvent;
+
+        return $aResult;
+    }
+
+
+    protected function reconcileRuntimeMergeProgress(
+        $iJournalId,
+        $sPhase = 'copying'
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $sPhase = trim((string)$sPhase);
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'copied_files' => 0,
+            'copied_bytes' => 0,
+            'last_file' => '',
+            'runtime_files_changed' => false,
+            'error' => '',
+        );
+
+        if ($sPhase === '')
+            $sPhase = 'copying';
+
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (empty($aLedger['ok'])) {
+            $aResult['error'] =
+                'Runtime merge ledger could not be verified during progress reconciliation: '
+                . (
+                    $aLedger['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        if (
+            (int)(
+                $aLedger['unjournaled_events']
+                ?? -1
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge progress cannot be reconciled while the ledger has an unjournaled durable tail.';
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aLedger['manifest']
+            ?? array();
+
+        $aEntryStates =
+            $aLedger['entry_states']
+            ?? array();
+
+        $aEvents =
+            $aLedger['events']
+            ?? array();
+
+        $iCopiedFiles = 0;
+        $iCopiedBytes = 0;
+        $sLastFile = '';
+
+        foreach (
+            $aEntryStates
+            as $iIndex => $sState
+        ) {
+            if ($sState !== 'installed')
+                continue;
+
+            $iIndex = (int)$iIndex;
+
+            if (
+                !isset($aManifest[$iIndex])
+                || !is_array(
+                    $aManifest[$iIndex]
+                )
+            ) {
+                $aResult['error'] =
+                    'Installed ledger state references an invalid manifest entry.';
+
+                return $aResult;
+            }
+
+            /*
+             * Every currently installed entry must still be
+             * exact before Doctor advertises it as copied.
+             */
+            $aDestination =
+                $this->inspectRuntimeMergeDestinationEntry(
+                    $iJournalId,
+                    $iIndex
+                );
+
+            if (
+                empty($aDestination['ok'])
+                || (
+                    $aDestination['state']
+                    ?? ''
+                ) !== 'exact'
+            ) {
+                $aResult['error'] =
+                    'Installed runtime merge entry no longer matches its immutable manifest: '
+                    . $iIndex;
+
+                return $aResult;
+            }
+
+            $iCopiedFiles++;
+
+            $iCopiedBytes +=
+                (int)(
+                    $aManifest[$iIndex]['size']
+                    ?? 0
+                );
+        }
+
+        /*
+         * last_file is determined by the most recent installed
+         * event whose entry is still currently installed.
+         */
+        for (
+            $i = count($aEvents) - 1;
+            $i >= 0;
+            $i--
+        ) {
+            $aEvent =
+                $aEvents[$i];
+
+            if (
+                ($aEvent['event'] ?? '')
+                    !== 'installed'
+            ) {
+                continue;
+            }
+
+            $iIndex =
+                (int)(
+                    $aEvent['manifest_index']
+                    ?? -1
+                );
+
+            if (
+                (
+                    $aEntryStates[$iIndex]
+                    ?? ''
+                ) === 'installed'
+            ) {
+                $sLastFile =
+                    (string)(
+                        $aEvent['file']
+                        ?? ''
+                    );
+
+                break;
+            }
+        }
+
+        $aState =
+            $aLedger['state']
+            ?? array();
+
+        if (
+            !is_array($aState)
+            || ($aState['phase'] ?? '')
+                !== 'runtime_merging'
+        ) {
+            $aResult['error'] =
+                'Runtime merge state is incomplete during progress reconciliation.';
+
+            return $aResult;
+        }
+
+        $aState['merge']['progress'] = array(
+            'phase' =>
+                $sPhase,
+
+            'copied_files' =>
+                $iCopiedFiles,
+
+            'copied_bytes' =>
+                $iCopiedBytes,
+
+            'last_file' =>
+                $sLastFile,
+
+            'runtime_files_changed' =>
+                $iCopiedFiles > 0,
+        );
+
+        $sJson =
+            json_encode(
+                $aState,
+                JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        if ($sJson === false) {
+            $aResult['error'] =
+                'Runtime merge progress state could not be encoded.';
+
+            return $aResult;
+        }
+
+        try {
+            $this->requireRepairJournalUpdate(
+                $iJournalId,
+                array(
+                    'status' =>
+                        'runtime_merging',
+
+                    'result_json' =>
+                        $sJson,
+
+                    'error_text' =>
+                        '',
+                )
+            );
+        } catch (Throwable $e) {
+            $aResult['error'] =
+                'Runtime merge progress journal update failed: '
+                . $e->getMessage();
+
+            return $aResult;
+        }
+
+        /*
+         * Independently verify the exact derived progress.
+         */
+        $aVerify =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        $aVerifyState =
+            json_decode(
+                (string)(
+                    $aVerify['result_json']
+                    ?? ''
+                ),
+                true
+            );
+
+        $aVerifyProgress =
+            is_array($aVerifyState)
+                ? (
+                    $aVerifyState[
+                        'merge'
+                    ]['progress']
+                    ?? array()
+                )
+                : array();
+
+        if (
+            empty($aVerify)
+            || (string)(
+                $aVerify['status']
+                ?? ''
+            ) !== 'runtime_merging'
+            || !is_array($aVerifyState)
+            || (
+                $aVerifyState['phase']
+                ?? ''
+            ) !== 'runtime_merging'
+            || (string)(
+                $aVerifyProgress['phase']
+                ?? ''
+            ) !== $sPhase
+            || (int)(
+                $aVerifyProgress['copied_files']
+                ?? -1
+            ) !== $iCopiedFiles
+            || (int)(
+                $aVerifyProgress['copied_bytes']
+                ?? -1
+            ) !== $iCopiedBytes
+            || (string)(
+                $aVerifyProgress['last_file']
+                ?? ''
+            ) !== $sLastFile
+            || (
+                !empty(
+                    $aVerifyProgress[
+                        'runtime_files_changed'
+                    ]
+                )
+                !== ($iCopiedFiles > 0)
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge progress journal verification failed.';
+
+            return $aResult;
+        }
+
+        $aResult['ok'] = true;
+        $aResult['changes_applied'] = true;
+        $aResult['copied_files'] =
+            $iCopiedFiles;
+        $aResult['copied_bytes'] =
+            $iCopiedBytes;
+        $aResult['last_file'] =
+            $sLastFile;
+        $aResult['runtime_files_changed'] =
+            $iCopiedFiles > 0;
+
+        return $aResult;
+    }
+
+
+    protected function writeRuntimeMergeProgressFromSession(
+        array &$aSession,
+        $sPhase,
+        $sLastFile = ''
+    ) {
+        $sPhase =
+            trim(
+                (string)$sPhase
+            );
+
+        $sLastFile =
+            (string)$sLastFile;
+
+        $iJournalId =
+            (int)(
+                $aSession['journal_id']
+                ?? 0
+            );
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'phase' => $sPhase,
+            'copied_files' => 0,
+            'copied_bytes' => 0,
+            'last_file' => '',
+            'runtime_files_changed' => false,
+            'error' => '',
+        );
+
+        if (
+            empty($aSession['ok'])
+            || $iJournalId <= 0
+            || empty($aSession['session_id'])
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch session is invalid.';
+
+            return $aResult;
+        }
+
+        if ($sPhase === '')
+            $sPhase = 'copying';
+
+        $iCopiedFiles =
+            (int)(
+                $aSession['installed_count']
+                ?? 0
+            );
+
+        $iCopiedBytes =
+            (int)(
+                $aSession['installed_bytes']
+                ?? 0
+            );
+
+        if (
+            $iCopiedFiles < 0
+            || $iCopiedBytes < 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch session progress counters are invalid.';
+
+            return $aResult;
+        }
+
+        if ($iCopiedFiles === 0)
+            $sLastFile = '';
+
+        $aIdentity =
+            $aSession['identity']
+            ?? array();
+
+        $sLedgerPath =
+            (string)(
+                $aSession['ledger_path']
+                ?? ''
+            );
+
+        $sLedgerId =
+            (string)(
+                $aIdentity['ledger_id']
+                ?? ''
+            );
+
+        $sExecutionId =
+            (string)(
+                $aIdentity[
+                    'execution_manifest_id'
+                ]
+                ?? ''
+            );
+
+        $sManifestHash =
+            (string)(
+                $aIdentity[
+                    'manifest_file_sha256'
+                ]
+                ?? ''
+            );
+
+        $iLedgerEvents =
+            (int)(
+                $aSession[
+                    'ledger_event_count'
+                ]
+                ?? -1
+            );
+
+        if (
+            $sLedgerPath === ''
+            || $sLedgerId === ''
+            || strlen($sExecutionId) !== 64
+            || strlen($sManifestHash) !== 64
+            || $iLedgerEvents < 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch session identity is incomplete.';
+
+            return $aResult;
+        }
+
+        /*
+         * Re-read the journal so progress never overwrites a
+         * newer DB state with stale session JSON.
+         */
+        $aJournal =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        $aState =
+            json_decode(
+                (string)(
+                    $aJournal['result_json']
+                    ?? ''
+                ),
+                true
+            );
+
+        $aMerge =
+            is_array($aState)
+                ? (
+                    $aState['merge']
+                    ?? array()
+                )
+                : array();
+
+        if (
+            empty($aJournal)
+            || (string)(
+                $aJournal['status']
+                ?? ''
+            ) !== 'runtime_merging'
+            || !is_array($aState)
+            || (
+                $aState['phase']
+                ?? ''
+            ) !== 'runtime_merging'
+            || empty(
+                $aState['runtime_moved']
+            )
+            || (string)(
+                $aMerge['ledger_path']
+                ?? ''
+            ) !== $sLedgerPath
+            || (string)(
+                $aMerge['ledger_id']
+                ?? ''
+            ) !== $sLedgerId
+            || (string)(
+                $aMerge[
+                    'execution_manifest_id'
+                ]
+                ?? ''
+            ) !== $sExecutionId
+            || (string)(
+                $aMerge[
+                    'manifest_file_sha256'
+                ]
+                ?? ''
+            ) !== $sManifestHash
+            || (int)(
+                $aMerge['ledger_events']
+                ?? -1
+            ) !== $iLedgerEvents
+        ) {
+            $aResult['error'] =
+                'Runtime merge journal no longer matches the batch session during progress update.';
+
+            return $aResult;
+        }
+
+        $aState['merge']['progress'] =
+            array(
+                'phase' =>
+                    $sPhase,
+
+                'copied_files' =>
+                    $iCopiedFiles,
+
+                'copied_bytes' =>
+                    $iCopiedBytes,
+
+                'last_file' =>
+                    $sLastFile,
+
+                'runtime_files_changed' =>
+                    $iCopiedFiles > 0,
+            );
+
+        $sJson =
+            json_encode(
+                $aState,
+                JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        if ($sJson === false) {
+            $aResult['error'] =
+                'Runtime merge session progress state could not be encoded.';
+
+            return $aResult;
+        }
+
+        try {
+            $this->requireRepairJournalUpdate(
+                $iJournalId,
+                array(
+                    'status' =>
+                        'runtime_merging',
+
+                    'result_json' =>
+                        $sJson,
+
+                    'error_text' =>
+                        '',
+                )
+            );
+        } catch (Throwable $e) {
+            $aResult['error'] =
+                'Runtime merge session progress journal update failed: '
+                . $e->getMessage();
+
+            return $aResult;
+        }
+
+        /*
+         * Independent DB verification only; no full ledger or
+         * immutable manifest reparse is necessary here.
+         */
+        $aVerify =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        $aVerifyState =
+            json_decode(
+                (string)(
+                    $aVerify['result_json']
+                    ?? ''
+                ),
+                true
+            );
+
+        $aVerifyMerge =
+            is_array($aVerifyState)
+                ? (
+                    $aVerifyState['merge']
+                    ?? array()
+                )
+                : array();
+
+        $aVerifyProgress =
+            is_array($aVerifyMerge)
+                ? (
+                    $aVerifyMerge['progress']
+                    ?? array()
+                )
+                : array();
+
+        if (
+            empty($aVerify)
+            || (string)(
+                $aVerify['status']
+                ?? ''
+            ) !== 'runtime_merging'
+            || !is_array($aVerifyState)
+            || (
+                $aVerifyState['phase']
+                ?? ''
+            ) !== 'runtime_merging'
+            || (int)(
+                $aVerifyMerge['ledger_events']
+                ?? -1
+            ) !== $iLedgerEvents
+            || (string)(
+                $aVerifyMerge['ledger_id']
+                ?? ''
+            ) !== $sLedgerId
+            || (string)(
+                $aVerifyProgress['phase']
+                ?? ''
+            ) !== $sPhase
+            || (int)(
+                $aVerifyProgress['copied_files']
+                ?? -1
+            ) !== $iCopiedFiles
+            || (int)(
+                $aVerifyProgress['copied_bytes']
+                ?? -1
+            ) !== $iCopiedBytes
+            || (string)(
+                $aVerifyProgress['last_file']
+                ?? ''
+            ) !== $sLastFile
+            || (
+                !empty(
+                    $aVerifyProgress[
+                        'runtime_files_changed'
+                    ]
+                )
+                !== ($iCopiedFiles > 0)
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge session progress verification failed.';
+
+            return $aResult;
+        }
+
+        $aSession['state'] =
+            $aVerifyState;
+
+        $aResult['ok'] =
+            true;
+
+        $aResult['changes_applied'] =
+            true;
+
+        $aResult['phase'] =
+            $sPhase;
+
+        $aResult['copied_files'] =
+            $iCopiedFiles;
+
+        $aResult['copied_bytes'] =
+            $iCopiedBytes;
+
+        $aResult['last_file'] =
+            $sLastFile;
+
+        $aResult['runtime_files_changed'] =
+            $iCopiedFiles > 0;
+
+        return $aResult;
+    }
+
+
+    protected function installRuntimeMergeManifestEntry(
+        $iJournalId,
+        $iManifestIndex
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iManifestIndex = (int)$iManifestIndex;
+
+        $aResult = array(
+            'ok' => false,
+            'installed' => false,
+            'changes_applied' => false,
+            'runtime_files_changed' => false,
+            'journal_id' => $iJournalId,
+            'manifest_index' => $iManifestIndex,
+            'error' => '',
+        );
+
+        /*
+         * Immutable manifest and durable ledger must both be
+         * fully synchronized before installation begins.
+         */
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (
+            empty($aLedger['ok'])
+            || (int)(
+                $aLedger['unjournaled_events']
+                ?? -1
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                !empty($aLedger['error'])
+                    ? (string)$aLedger['error']
+                    : 'Runtime merge ledger requires recovery before installation.';
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aLedger['manifest']
+            ?? array();
+
+        if (
+            $iManifestIndex < 0
+            || !isset($aManifest[$iManifestIndex])
+            || !is_array(
+                $aManifest[$iManifestIndex]
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge manifest index is invalid.';
+
+            return $aResult;
+        }
+
+        $sEntryState =
+            (string)(
+                $aLedger[
+                    'entry_states'
+                ][$iManifestIndex]
+                ?? ''
+            );
+
+        if (
+            $sEntryState !== ''
+            && $sEntryState !== 'rolled_back'
+        ) {
+            $aResult['error'] =
+                'Runtime merge entry is not in an installable ledger state.';
+
+            return $aResult;
+        }
+
+        $aEntry =
+            $aManifest[$iManifestIndex];
+
+        $aState =
+            $aLedger['state']
+            ?? array();
+
+        $aSafety =
+            $aState['safety']
+            ?? array();
+
+        $aMerge =
+            $aState['merge']
+            ?? array();
+
+        $sProtectedPath =
+            (string)(
+                $aSafety[
+                    'protected_runtime_path'
+                ]
+                ?? ''
+            );
+
+        if (
+            $sProtectedPath === ''
+            || !is_dir($sProtectedPath)
+            || is_link($sProtectedPath)
+        ) {
+            $aResult['error'] =
+                'Protected runtime root is unavailable or unsafe.';
+
+            return $aResult;
+        }
+
+        $sProtectedReal =
+            realpath($sProtectedPath);
+
+        if ($sProtectedReal === false) {
+            $aResult['error'] =
+                'Protected runtime root could not be resolved.';
+
+            return $aResult;
+        }
+
+        $sRelative =
+            (string)(
+                $aEntry['relative_path']
+                ?? ''
+            );
+
+        $sSource =
+            $sProtectedReal
+            . DIRECTORY_SEPARATOR
+            . str_replace(
+                '/',
+                DIRECTORY_SEPARATOR,
+                $sRelative
+            );
+
+        if (
+            !is_file($sSource)
+            || is_link($sSource)
+        ) {
+            $aResult['error'] =
+                'Protected runtime merge source is not a safe regular file.';
+
+            return $aResult;
+        }
+
+        $sSourceReal =
+            realpath($sSource);
+
+        if (
+            $sSourceReal === false
+            || strpos(
+                $sSourceReal,
+                $sProtectedReal
+                . DIRECTORY_SEPARATOR
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Protected runtime merge source resolves outside the protected tree.';
+
+            return $aResult;
+        }
+
+        /*
+         * Re-prove source content and metadata immediately
+         * before recording installation intent.
+         */
+        $aSourceBefore =
+            @lstat($sSourceReal);
+
+        if (
+            !is_array($aSourceBefore)
+            || (int)(
+                $aSourceBefore['nlink']
+                ?? 0
+            ) !== 1
+        ) {
+            $aResult['error'] =
+                'Protected runtime merge source metadata is unsafe.';
+
+            return $aResult;
+        }
+
+        $sSourceHash =
+            @hash_file(
+                'sha256',
+                $sSourceReal
+            );
+
+        clearstatcache(
+            true,
+            $sSourceReal
+        );
+
+        $aSourceAfter =
+            @lstat($sSourceReal);
+
+        if (
+            $sSourceHash === false
+            || !is_array($aSourceAfter)
+        ) {
+            $aResult['error'] =
+                'Protected runtime merge source could not be verified.';
+
+            return $aResult;
+        }
+
+        foreach (
+            array(
+                'dev',
+                'ino',
+                'size',
+                'mtime',
+                'ctime',
+                'uid',
+                'gid',
+                'nlink',
+                'mode',
+            )
+            as $sKey
+        ) {
+            if (
+                (int)(
+                    $aSourceBefore[$sKey]
+                    ?? -1
+                )
+                !==
+                (int)(
+                    $aSourceAfter[$sKey]
+                    ?? -1
+                )
+            ) {
+                $aResult['error'] =
+                    'Protected runtime merge source changed during verification.';
+
+                return $aResult;
+            }
+        }
+
+        $iExpectedMode =
+            octdec(
+                (string)(
+                    $aEntry['mode']
+                    ?? '0000'
+                )
+            );
+
+        if (
+            !hash_equals(
+                strtolower(
+                    (string)(
+                        $aEntry['sha256']
+                        ?? ''
+                    )
+                ),
+                strtolower($sSourceHash)
+            )
+            || (int)$aSourceAfter['size']
+                !== (int)(
+                    $aEntry['size']
+                    ?? -1
+                )
+            || (
+                (int)$aSourceAfter['mode']
+                & 07777
+            ) !== $iExpectedMode
+            || (int)$aSourceAfter['uid']
+                !== (int)(
+                    $aEntry['uid']
+                    ?? -1
+                )
+            || (int)$aSourceAfter['gid']
+                !== (int)(
+                    $aEntry['gid']
+                    ?? -1
+                )
+            || (int)$aSourceAfter['mtime']
+                !== (int)(
+                    $aEntry['mtime']
+                    ?? -1
+                )
+            || (int)$aSourceAfter['ctime']
+                !== (int)(
+                    $aEntry['ctime']
+                    ?? -1
+                )
+        ) {
+            $aResult['error'] =
+                'Protected runtime merge source no longer matches the immutable manifest.';
+
+            return $aResult;
+        }
+
+        /*
+         * Destination must still be proven absent.
+         */
+        $aDestination =
+            $this->inspectRuntimeMergeDestinationEntry(
+                $iJournalId,
+                $iManifestIndex
+            );
+
+        if (
+            empty($aDestination['ok'])
+            || (
+                $aDestination['state']
+                ?? ''
+            ) !== 'absent'
+        ) {
+            $aResult['error'] =
+                'Runtime merge destination is no longer absent.';
+
+            return $aResult;
+        }
+
+        $sDestination =
+            (string)(
+                $aDestination['destination']
+                ?? ''
+            );
+
+        $sParent =
+            dirname($sDestination);
+
+        /*
+         * First proof deliberately does not create directories.
+         * Every required parent must already exist safely.
+         */
+        if (
+            !is_dir($sParent)
+            || is_link($sParent)
+        ) {
+            $aResult['error'] =
+                'Runtime merge destination parent does not already exist safely.';
+
+            return $aResult;
+        }
+
+        $sExecutionId =
+            strtolower(
+                (string)(
+                    $aMerge[
+                        'execution_manifest_id'
+                    ]
+                    ?? ''
+                )
+            );
+
+        $sTemporary =
+            $sParent
+            . DIRECTORY_SEPARATOR
+            . '.mud-merge-'
+            . $iJournalId
+            . '-'
+            . $iManifestIndex
+            . '-'
+            . substr(
+                $sExecutionId,
+                0,
+                12
+            )
+            . '.tmp';
+
+        if (
+            file_exists($sTemporary)
+            || is_link($sTemporary)
+        ) {
+            $aResult['error'] =
+                'A deterministic runtime merge temporary file already exists. Recovery is required.';
+
+            return $aResult;
+        }
+
+        /*
+         * Durable intent precedes every destination mutation.
+         */
+        $aIntent =
+            $this->appendRuntimeMergeLedgerEvent(
+                $iJournalId,
+                'intent',
+                $iManifestIndex
+            );
+
+        if (empty($aIntent['ok'])) {
+            $aResult['error'] =
+                'Runtime merge installation intent could not be journaled: '
+                . (
+                    $aIntent['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $aResult['changes_applied'] = true;
+
+        /*
+         * Recheck both names after intent was durably recorded.
+         */
+        $aDestination =
+            $this->inspectRuntimeMergeDestinationEntry(
+                $iJournalId,
+                $iManifestIndex
+            );
+
+        if (
+            empty($aDestination['ok'])
+            || (
+                $aDestination['state']
+                ?? ''
+            ) !== 'absent'
+            || file_exists($sTemporary)
+            || is_link($sTemporary)
+        ) {
+            $aResult['error'] =
+                'Runtime merge destination or temporary path changed after installation intent. Recovery is required.';
+
+            return $aResult;
+        }
+
+        $hSource =
+            @fopen(
+                $sSourceReal,
+                'rb'
+            );
+
+        $hTemporary =
+            @fopen(
+                $sTemporary,
+                'xb'
+            );
+
+        if (
+            $hSource === false
+            || $hTemporary === false
+        ) {
+            if (is_resource($hSource))
+                @fclose($hSource);
+
+            if (is_resource($hTemporary))
+                @fclose($hTemporary);
+
+            if (
+                is_file($sTemporary)
+                && !is_link($sTemporary)
+            ) {
+                @unlink($sTemporary);
+            }
+
+            $aResult['error'] =
+                'Runtime merge temporary copy could not be opened. Recovery is required.';
+
+            return $aResult;
+        }
+
+        $iCopied =
+            @stream_copy_to_stream(
+                $hSource,
+                $hTemporary
+            );
+
+        @fclose($hSource);
+
+        $bFlushOk =
+            $iCopied !== false
+            && @fflush($hTemporary);
+
+        if (
+            $bFlushOk
+            && function_exists('fsync')
+        ) {
+            $bFlushOk =
+                @fsync($hTemporary);
+        }
+
+        @fclose($hTemporary);
+
+        if (
+            !$bFlushOk
+            || (int)$iCopied
+                !== (int)(
+                    $aEntry['size']
+                    ?? -1
+                )
+        ) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Runtime merge temporary content copy failed. Recovery is required.';
+
+            return $aResult;
+        }
+
+        $aMetadata =
+            $this->applyRuntimeFilesystemMetadata(
+                $sTemporary,
+                array(
+                    'mode' =>
+                        $iExpectedMode,
+
+                    'uid' =>
+                        (int)(
+                            $aEntry['uid']
+                            ?? -1
+                        ),
+
+                    'gid' =>
+                        (int)(
+                            $aEntry['gid']
+                            ?? -1
+                        ),
+                )
+            );
+
+        if (empty($aMetadata['ok'])) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Runtime merge temporary metadata verification failed: '
+                . (
+                    $aMetadata['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $aTempStat =
+            @lstat($sTemporary);
+
+        $sTempHash =
+            @hash_file(
+                'sha256',
+                $sTemporary
+            );
+
+        if (
+            !is_array($aTempStat)
+            || (int)(
+                $aTempStat['nlink']
+                ?? 0
+            ) !== 1
+            || $sTempHash === false
+            || !hash_equals(
+                strtolower(
+                    (string)(
+                        $aEntry['sha256']
+                        ?? ''
+                    )
+                ),
+                strtolower($sTempHash)
+            )
+            || (int)$aTempStat['size']
+                !== (int)(
+                    $aEntry['size']
+                    ?? -1
+                )
+            || (
+                (int)$aTempStat['mode']
+                & 07777
+            ) !== $iExpectedMode
+            || (int)$aTempStat['uid']
+                !== (int)(
+                    $aEntry['uid']
+                    ?? -1
+                )
+            || (int)$aTempStat['gid']
+                !== (int)(
+                    $aEntry['gid']
+                    ?? -1
+                )
+        ) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Runtime merge temporary file failed immutable content or metadata verification. Recovery is required.';
+
+            return $aResult;
+        }
+
+        /*
+         * Final collision check immediately before atomic
+         * create-without-overwrite.
+         */
+        $aDestination =
+            $this->inspectRuntimeMergeDestinationEntry(
+                $iJournalId,
+                $iManifestIndex
+            );
+
+        if (
+            empty($aDestination['ok'])
+            || (
+                $aDestination['state']
+                ?? ''
+            ) !== 'absent'
+        ) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Runtime merge destination appeared before atomic installation. Recovery is required.';
+
+            return $aResult;
+        }
+
+        /*
+         * link() atomically refuses an existing destination.
+         * The temporary name is deterministic so a crash while
+         * both hard links exist remains recoverable.
+         */
+        if (
+            !@link(
+                $sTemporary,
+                $sDestination
+            )
+        ) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Runtime merge destination could not be atomically created without overwrite. Recovery is required.';
+
+            return $aResult;
+        }
+
+        if (!@unlink($sTemporary)) {
+            $aResult['error'] =
+                'Runtime merge destination was created but the temporary hard link remains. Recovery is required.';
+
+            return $aResult;
+        }
+
+        clearstatcache(
+            true,
+            $sDestination
+        );
+
+        $aInstalled =
+            $this->inspectRuntimeMergeDestinationEntry(
+                $iJournalId,
+                $iManifestIndex
+            );
+
+        if (
+            empty($aInstalled['ok'])
+            || (
+                $aInstalled['state']
+                ?? ''
+            ) !== 'exact'
+            || (int)(
+                $aInstalled['actual_nlink']
+                ?? -1
+            ) !== 1
+        ) {
+            $aResult['error'] =
+                'Installed runtime merge destination failed exact verification. Recovery is required.';
+
+            return $aResult;
+        }
+
+        /*
+         * Ownership identity is now captured durably.
+         */
+        $aInstalledEvent =
+            $this->appendRuntimeMergeLedgerEvent(
+                $iJournalId,
+                'installed',
+                $iManifestIndex
+            );
+
+        if (empty($aInstalledEvent['ok'])) {
+            $aResult['error'] =
+                'Runtime merge destination is installed but its installed event could not be journaled. Recovery is required: '
+                . (
+                    $aInstalledEvent['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        /*
+         * Derive compact DB progress from the durable ledger.
+         */
+        $aProgress =
+            $this->reconcileRuntimeMergeProgress(
+                $iJournalId,
+                'copying'
+            );
+
+        if (empty($aProgress['ok'])) {
+            $aResult['error'] =
+                'Runtime merge file is durably installed but progress reconciliation failed. Recovery is required: '
+                . (
+                    $aProgress['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $aResult['ok'] = true;
+        $aResult['installed'] = true;
+        $aResult['changes_applied'] = true;
+        $aResult['runtime_files_changed'] = true;
+        $aResult['file'] =
+            (string)(
+                $aEntry['file']
+                ?? ''
+            );
+        $aResult['destination'] =
+            $sDestination;
+        $aResult['sha256'] =
+            (string)(
+                $aEntry['sha256']
+                ?? ''
+            );
+        $aResult['size'] =
+            (int)(
+                $aEntry['size']
+                ?? 0
+            );
+        $aResult['installed_dev'] =
+            (int)(
+                $aInstalled['actual_dev']
+                ?? -1
+            );
+        $aResult['installed_ino'] =
+            (int)(
+                $aInstalled['actual_ino']
+                ?? -1
+            );
+        $aResult['copied_files'] =
+            (int)(
+                $aProgress['copied_files']
+                ?? 0
+            );
+        $aResult['copied_bytes'] =
+            (int)(
+                $aProgress['copied_bytes']
+                ?? 0
+            );
+
+        return $aResult;
+    }
+
+
+    protected function installRuntimeMergeManifestEntryFromSession(
+        array &$aSession,
+        $hLedger,
+        $iManifestIndex
+    ) {
+        $iJournalId =
+            (int)(
+                $aSession['journal_id']
+                ?? 0
+            );
+
+        $iManifestIndex =
+            (int)$iManifestIndex;
+
+        $aResult = array(
+            'ok' => false,
+            'installed' => false,
+            'changes_applied' => false,
+            'runtime_files_changed' => false,
+            'journal_id' => $iJournalId,
+            'manifest_index' => $iManifestIndex,
+            'error' => '',
+        );
+
+        /*
+         * The immutable manifest and append-only ledger were
+         * fully verified by prepareRuntimeMergeBatchSession().
+         * The locked appender will independently prove the
+         * current ledger/DB byte boundary before each event.
+         */
+        if (
+            empty($aSession['ok'])
+            || $iJournalId <= 0
+            || empty($aSession['session_id'])
+            || !is_resource($hLedger)
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch session or locked ledger handle is invalid.';
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aSession['manifest']
+            ?? array();
+
+        if (
+            $iManifestIndex < 0
+            || !isset($aManifest[$iManifestIndex])
+            || !is_array(
+                $aManifest[$iManifestIndex]
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge manifest index is invalid.';
+
+            return $aResult;
+        }
+
+        $sEntryState =
+            (string)(
+                $aSession[
+                    'entry_states'
+                ][$iManifestIndex]
+                ?? ''
+            );
+
+        if (
+            $sEntryState !== ''
+            && $sEntryState !== 'rolled_back'
+        ) {
+            $aResult['error'] =
+                'Runtime merge entry is not in an installable session state.';
+
+            return $aResult;
+        }
+
+        $aEntry =
+            $aManifest[$iManifestIndex];
+
+        $aState =
+            $aSession['state']
+            ?? array();
+
+        $aSafety =
+            $aState['safety']
+            ?? array();
+
+        $aMerge =
+            $aState['merge']
+            ?? array();
+
+        $sProtectedPath =
+            (string)(
+                $aSafety[
+                    'protected_runtime_path'
+                ]
+                ?? ''
+            );
+
+        if (
+            $sProtectedPath === ''
+            || !is_dir($sProtectedPath)
+            || is_link($sProtectedPath)
+        ) {
+            $aResult['error'] =
+                'Protected runtime root is unavailable or unsafe.';
+
+            return $aResult;
+        }
+
+        $sProtectedReal =
+            realpath($sProtectedPath);
+
+        if ($sProtectedReal === false) {
+            $aResult['error'] =
+                'Protected runtime root could not be resolved.';
+
+            return $aResult;
+        }
+
+        $sRelative =
+            (string)(
+                $aEntry['relative_path']
+                ?? ''
+            );
+
+        $sSource =
+            $sProtectedReal
+            . DIRECTORY_SEPARATOR
+            . str_replace(
+                '/',
+                DIRECTORY_SEPARATOR,
+                $sRelative
+            );
+
+        if (
+            !is_file($sSource)
+            || is_link($sSource)
+        ) {
+            $aResult['error'] =
+                'Protected runtime merge source is not a safe regular file.';
+
+            return $aResult;
+        }
+
+        $sSourceReal =
+            realpath($sSource);
+
+        if (
+            $sSourceReal === false
+            || strpos(
+                $sSourceReal,
+                $sProtectedReal
+                . DIRECTORY_SEPARATOR
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Protected runtime merge source resolves outside the protected tree.';
+
+            return $aResult;
+        }
+
+        /*
+         * Re-prove source content and metadata immediately
+         * before recording installation intent.
+         */
+        $aSourceBefore =
+            @lstat($sSourceReal);
+
+        if (
+            !is_array($aSourceBefore)
+            || (int)(
+                $aSourceBefore['nlink']
+                ?? 0
+            ) !== 1
+        ) {
+            $aResult['error'] =
+                'Protected runtime merge source metadata is unsafe.';
+
+            return $aResult;
+        }
+
+        $sSourceHash =
+            @hash_file(
+                'sha256',
+                $sSourceReal
+            );
+
+        clearstatcache(
+            true,
+            $sSourceReal
+        );
+
+        $aSourceAfter =
+            @lstat($sSourceReal);
+
+        if (
+            $sSourceHash === false
+            || !is_array($aSourceAfter)
+        ) {
+            $aResult['error'] =
+                'Protected runtime merge source could not be verified.';
+
+            return $aResult;
+        }
+
+        foreach (
+            array(
+                'dev',
+                'ino',
+                'size',
+                'mtime',
+                'ctime',
+                'uid',
+                'gid',
+                'nlink',
+                'mode',
+            )
+            as $sKey
+        ) {
+            if (
+                (int)(
+                    $aSourceBefore[$sKey]
+                    ?? -1
+                )
+                !==
+                (int)(
+                    $aSourceAfter[$sKey]
+                    ?? -1
+                )
+            ) {
+                $aResult['error'] =
+                    'Protected runtime merge source changed during verification.';
+
+                return $aResult;
+            }
+        }
+
+        $iExpectedMode =
+            octdec(
+                (string)(
+                    $aEntry['mode']
+                    ?? '0000'
+                )
+            );
+
+        if (
+            !hash_equals(
+                strtolower(
+                    (string)(
+                        $aEntry['sha256']
+                        ?? ''
+                    )
+                ),
+                strtolower($sSourceHash)
+            )
+            || (int)$aSourceAfter['size']
+                !== (int)(
+                    $aEntry['size']
+                    ?? -1
+                )
+            || (
+                (int)$aSourceAfter['mode']
+                & 07777
+            ) !== $iExpectedMode
+            || (int)$aSourceAfter['uid']
+                !== (int)(
+                    $aEntry['uid']
+                    ?? -1
+                )
+            || (int)$aSourceAfter['gid']
+                !== (int)(
+                    $aEntry['gid']
+                    ?? -1
+                )
+            || (int)$aSourceAfter['mtime']
+                !== (int)(
+                    $aEntry['mtime']
+                    ?? -1
+                )
+            || (int)$aSourceAfter['ctime']
+                !== (int)(
+                    $aEntry['ctime']
+                    ?? -1
+                )
+        ) {
+            $aResult['error'] =
+                'Protected runtime merge source no longer matches the immutable manifest.';
+
+            return $aResult;
+        }
+
+        /*
+         * Destination must still be proven absent.
+         */
+        $aDestination =
+            $this->inspectRuntimeMergeDestinationEntryFromSession(
+                $aSession,
+                $iManifestIndex
+            );
+
+        if (
+            empty($aDestination['ok'])
+            || (
+                $aDestination['state']
+                ?? ''
+            ) !== 'absent'
+        ) {
+            $aResult['error'] =
+                'Runtime merge destination is no longer absent.';
+
+            return $aResult;
+        }
+
+        $sDestination =
+            (string)(
+                $aDestination['destination']
+                ?? ''
+            );
+
+        $sParent =
+            dirname($sDestination);
+
+        /*
+         * First proof deliberately does not create directories.
+         * Every required parent must already exist safely.
+         */
+        if (
+            !is_dir($sParent)
+            || is_link($sParent)
+        ) {
+            $aResult['error'] =
+                'Runtime merge destination parent does not already exist safely.';
+
+            return $aResult;
+        }
+
+        $sExecutionId =
+            strtolower(
+                (string)(
+                    $aMerge[
+                        'execution_manifest_id'
+                    ]
+                    ?? ''
+                )
+            );
+
+        $sTemporary =
+            $sParent
+            . DIRECTORY_SEPARATOR
+            . '.mud-merge-'
+            . $iJournalId
+            . '-'
+            . $iManifestIndex
+            . '-'
+            . substr(
+                $sExecutionId,
+                0,
+                12
+            )
+            . '.tmp';
+
+        if (
+            file_exists($sTemporary)
+            || is_link($sTemporary)
+        ) {
+            $aResult['error'] =
+                'A deterministic runtime merge temporary file already exists. Recovery is required.';
+
+            return $aResult;
+        }
+
+        /*
+         * Durable intent precedes every destination mutation.
+         */
+        $aIntent =
+            $this->appendRuntimeMergeLedgerEventFromSession(
+                $aSession,
+                $hLedger,
+                'intent',
+                $iManifestIndex
+            );
+
+        if (empty($aIntent['ok'])) {
+            $aResult['error'] =
+                'Runtime merge installation intent could not be journaled: '
+                . (
+                    $aIntent['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $aResult['changes_applied'] = true;
+
+        /*
+         * Recheck both names after intent was durably recorded.
+         */
+        $aDestination =
+            $this->inspectRuntimeMergeDestinationEntryFromSession(
+                $aSession,
+                $iManifestIndex
+            );
+
+        if (
+            empty($aDestination['ok'])
+            || (
+                $aDestination['state']
+                ?? ''
+            ) !== 'absent'
+            || file_exists($sTemporary)
+            || is_link($sTemporary)
+        ) {
+            $aResult['error'] =
+                'Runtime merge destination or temporary path changed after installation intent. Recovery is required.';
+
+            return $aResult;
+        }
+
+        $hSource =
+            @fopen(
+                $sSourceReal,
+                'rb'
+            );
+
+        $hTemporary =
+            @fopen(
+                $sTemporary,
+                'xb'
+            );
+
+        if (
+            $hSource === false
+            || $hTemporary === false
+        ) {
+            if (is_resource($hSource))
+                @fclose($hSource);
+
+            if (is_resource($hTemporary))
+                @fclose($hTemporary);
+
+            if (
+                is_file($sTemporary)
+                && !is_link($sTemporary)
+            ) {
+                @unlink($sTemporary);
+            }
+
+            $aResult['error'] =
+                'Runtime merge temporary copy could not be opened. Recovery is required.';
+
+            return $aResult;
+        }
+
+        $iCopied =
+            @stream_copy_to_stream(
+                $hSource,
+                $hTemporary
+            );
+
+        @fclose($hSource);
+
+        $bFlushOk =
+            $iCopied !== false
+            && @fflush($hTemporary);
+
+        if (
+            $bFlushOk
+            && function_exists('fsync')
+        ) {
+            $bFlushOk =
+                @fsync($hTemporary);
+        }
+
+        @fclose($hTemporary);
+
+        if (
+            !$bFlushOk
+            || (int)$iCopied
+                !== (int)(
+                    $aEntry['size']
+                    ?? -1
+                )
+        ) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Runtime merge temporary content copy failed. Recovery is required.';
+
+            return $aResult;
+        }
+
+        $aMetadata =
+            $this->applyRuntimeFilesystemMetadata(
+                $sTemporary,
+                array(
+                    'mode' =>
+                        $iExpectedMode,
+
+                    'uid' =>
+                        (int)(
+                            $aEntry['uid']
+                            ?? -1
+                        ),
+
+                    'gid' =>
+                        (int)(
+                            $aEntry['gid']
+                            ?? -1
+                        ),
+                )
+            );
+
+        if (empty($aMetadata['ok'])) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Runtime merge temporary metadata verification failed: '
+                . (
+                    $aMetadata['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $aTempStat =
+            @lstat($sTemporary);
+
+        $sTempHash =
+            @hash_file(
+                'sha256',
+                $sTemporary
+            );
+
+        if (
+            !is_array($aTempStat)
+            || (int)(
+                $aTempStat['nlink']
+                ?? 0
+            ) !== 1
+            || $sTempHash === false
+            || !hash_equals(
+                strtolower(
+                    (string)(
+                        $aEntry['sha256']
+                        ?? ''
+                    )
+                ),
+                strtolower($sTempHash)
+            )
+            || (int)$aTempStat['size']
+                !== (int)(
+                    $aEntry['size']
+                    ?? -1
+                )
+            || (
+                (int)$aTempStat['mode']
+                & 07777
+            ) !== $iExpectedMode
+            || (int)$aTempStat['uid']
+                !== (int)(
+                    $aEntry['uid']
+                    ?? -1
+                )
+            || (int)$aTempStat['gid']
+                !== (int)(
+                    $aEntry['gid']
+                    ?? -1
+                )
+        ) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Runtime merge temporary file failed immutable content or metadata verification. Recovery is required.';
+
+            return $aResult;
+        }
+
+        /*
+         * Final collision check immediately before atomic
+         * create-without-overwrite.
+         */
+        $aDestination =
+            $this->inspectRuntimeMergeDestinationEntryFromSession(
+                $aSession,
+                $iManifestIndex
+            );
+
+        if (
+            empty($aDestination['ok'])
+            || (
+                $aDestination['state']
+                ?? ''
+            ) !== 'absent'
+        ) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Runtime merge destination appeared before atomic installation. Recovery is required.';
+
+            return $aResult;
+        }
+
+        /*
+         * link() atomically refuses an existing destination.
+         * The temporary name is deterministic so a crash while
+         * both hard links exist remains recoverable.
+         */
+        if (
+            !@link(
+                $sTemporary,
+                $sDestination
+            )
+        ) {
+            @unlink($sTemporary);
+
+            $aResult['error'] =
+                'Runtime merge destination could not be atomically created without overwrite. Recovery is required.';
+
+            return $aResult;
+        }
+
+        if (!@unlink($sTemporary)) {
+            $aResult['error'] =
+                'Runtime merge destination was created but the temporary hard link remains. Recovery is required.';
+
+            return $aResult;
+        }
+
+        clearstatcache(
+            true,
+            $sDestination
+        );
+
+        $aInstalled =
+            $this->inspectRuntimeMergeDestinationEntryFromSession(
+                $aSession,
+                $iManifestIndex
+            );
+
+        if (
+            empty($aInstalled['ok'])
+            || (
+                $aInstalled['state']
+                ?? ''
+            ) !== 'exact'
+            || (int)(
+                $aInstalled['actual_nlink']
+                ?? -1
+            ) !== 1
+        ) {
+            $aResult['error'] =
+                'Installed runtime merge destination failed exact verification. Recovery is required.';
+
+            return $aResult;
+        }
+
+        /*
+         * Ownership identity is now captured durably.
+         */
+        $aInstalledEvent =
+            $this->appendRuntimeMergeLedgerEventFromSession(
+                $aSession,
+                $hLedger,
+                'installed',
+                $iManifestIndex
+            );
+
+        if (empty($aInstalledEvent['ok'])) {
+            $aResult['error'] =
+                'Runtime merge destination is installed but its installed event could not be journaled. Recovery is required: '
+                . (
+                    $aInstalledEvent['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        /*
+         * Derive compact DB progress from the durable ledger.
+         */
+        $aProgress =
+            $this->writeRuntimeMergeProgressFromSession(
+                $aSession,
+                'copying',
+                (string)(
+                    $aEntry['file']
+                    ?? ''
+                )
+            );
+
+        if (empty($aProgress['ok'])) {
+            $aResult['error'] =
+                'Runtime merge file is durably installed but progress reconciliation failed. Recovery is required: '
+                . (
+                    $aProgress['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $aResult['ok'] = true;
+        $aResult['installed'] = true;
+        $aResult['changes_applied'] = true;
+        $aResult['runtime_files_changed'] = true;
+        $aResult['file'] =
+            (string)(
+                $aEntry['file']
+                ?? ''
+            );
+        $aResult['destination'] =
+            $sDestination;
+        $aResult['sha256'] =
+            (string)(
+                $aEntry['sha256']
+                ?? ''
+            );
+        $aResult['size'] =
+            (int)(
+                $aEntry['size']
+                ?? 0
+            );
+        $aResult['installed_dev'] =
+            (int)(
+                $aInstalled['actual_dev']
+                ?? -1
+            );
+        $aResult['installed_ino'] =
+            (int)(
+                $aInstalled['actual_ino']
+                ?? -1
+            );
+        $aResult['copied_files'] =
+            (int)(
+                $aProgress['copied_files']
+                ?? 0
+            );
+        $aResult['copied_bytes'] =
+            (int)(
+                $aProgress['copied_bytes']
+                ?? 0
+            );
+
+        return $aResult;
+    }
+
+
+
+    protected function rollbackRuntimeMergeManifestEntry(
+        $iJournalId,
+        $iManifestIndex,
+        $bDeferProgressReconciliation = false
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iManifestIndex = (int)$iManifestIndex;
+        $bDeferProgressReconciliation =
+            (bool)$bDeferProgressReconciliation;
+
+        $aResult = array(
+            'ok' => false,
+            'rolled_back' => false,
+            'changes_applied' => false,
+            'runtime_files_changed' => false,
+            'journal_id' => $iJournalId,
+            'manifest_index' => $iManifestIndex,
+            'error' => '',
+        );
+
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (
+            empty($aLedger['ok'])
+            || (int)(
+                $aLedger['unjournaled_events']
+                ?? -1
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                !empty($aLedger['error'])
+                    ? (string)$aLedger['error']
+                    : 'Runtime merge ledger requires recovery before entry rollback.';
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aLedger['manifest']
+            ?? array();
+
+        if (
+            $iManifestIndex < 0
+            || !isset($aManifest[$iManifestIndex])
+            || !is_array(
+                $aManifest[$iManifestIndex]
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge rollback manifest index is invalid.';
+
+            return $aResult;
+        }
+
+        $aEntry =
+            $aManifest[$iManifestIndex];
+
+        $sEntryState =
+            (string)(
+                $aLedger[
+                    'entry_states'
+                ][$iManifestIndex]
+                ?? ''
+            );
+
+        /*
+         * Nothing has ever been installed for this entry.
+         */
+        if ($sEntryState === '') {
+            $aDestination =
+                $this->inspectRuntimeMergeDestinationEntry(
+                    $iJournalId,
+                    $iManifestIndex
+                );
+
+            if (
+                empty($aDestination['ok'])
+                || (
+                    $aDestination['state']
+                    ?? ''
+                ) !== 'absent'
+            ) {
+                $aResult['error'] =
+                    'Unjournaled runtime merge destination exists; rollback refused.';
+
+                return $aResult;
+            }
+
+            $aResult['ok'] = true;
+            $aResult['rolled_back'] = true;
+
+            return $aResult;
+        }
+
+        /*
+         * Already safely rolled back. Re-prove absence.
+         */
+        if ($sEntryState === 'rolled_back') {
+            $aDestination =
+                $this->inspectRuntimeMergeDestinationEntry(
+                    $iJournalId,
+                    $iManifestIndex
+                );
+
+            if (
+                empty($aDestination['ok'])
+                || (
+                    $aDestination['state']
+                    ?? ''
+                ) !== 'absent'
+            ) {
+                $aResult['error'] =
+                    'Previously rolled-back runtime merge destination is no longer absent.';
+
+                return $aResult;
+            }
+
+            $aResult['ok'] = true;
+            $aResult['rolled_back'] = true;
+
+            return $aResult;
+        }
+
+        if (
+            $sEntryState !== 'intent'
+            && $sEntryState !== 'installed'
+        ) {
+            $aResult['error'] =
+                'Runtime merge entry has an unsupported rollback state.';
+
+            return $aResult;
+        }
+
+        $aState =
+            $aLedger['state']
+            ?? array();
+
+        $aMerge =
+            $aState['merge']
+            ?? array();
+
+        $sExecutionId =
+            strtolower(
+                (string)(
+                    $aMerge[
+                        'execution_manifest_id'
+                    ]
+                    ?? ''
+                )
+            );
+
+        if (strlen($sExecutionId) !== 64) {
+            $aResult['error'] =
+                'Runtime merge execution identity is incomplete during rollback.';
+
+            return $aResult;
+        }
+
+        $aDestination =
+            $this->inspectRuntimeMergeDestinationEntry(
+                $iJournalId,
+                $iManifestIndex
+            );
+
+        if (empty($aDestination['ok'])) {
+            $aResult['error'] =
+                'Runtime merge destination could not be inspected during rollback: '
+                . (
+                    $aDestination['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $sDestination =
+            (string)(
+                $aDestination['destination']
+                ?? ''
+            );
+
+        if ($sDestination === '') {
+            $aResult['error'] =
+                'Runtime merge rollback destination is missing.';
+
+            return $aResult;
+        }
+
+        $sParent =
+            dirname($sDestination);
+
+        $sTemporary =
+            $sParent
+            . DIRECTORY_SEPARATOR
+            . '.mud-merge-'
+            . $iJournalId
+            . '-'
+            . $iManifestIndex
+            . '-'
+            . substr(
+                $sExecutionId,
+                0,
+                12
+            )
+            . '.tmp';
+
+        /*
+         * Read-only verifier for Doctor's deterministic temp.
+         */
+        $verifyTemporary =
+            static function (
+                $sPath,
+                array $aExpected
+            ) {
+                $aVerify = array(
+                    'ok' => false,
+                    'exists' => false,
+                    'error' => '',
+                );
+
+                if (
+                    !file_exists($sPath)
+                    && !is_link($sPath)
+                ) {
+                    $aVerify['ok'] = true;
+                    return $aVerify;
+                }
+
+                $aVerify['exists'] = true;
+
+                if (
+                    !is_file($sPath)
+                    || is_link($sPath)
+                ) {
+                    $aVerify['error'] =
+                        'Runtime merge temporary path is not a safe regular file.';
+
+                    return $aVerify;
+                }
+
+                $aBefore =
+                    @lstat($sPath);
+
+                if (!is_array($aBefore)) {
+                    $aVerify['error'] =
+                        'Runtime merge temporary metadata could not be read.';
+
+                    return $aVerify;
+                }
+
+                $sHash =
+                    @hash_file(
+                        'sha256',
+                        $sPath
+                    );
+
+                clearstatcache(
+                    true,
+                    $sPath
+                );
+
+                $aAfter =
+                    @lstat($sPath);
+
+                if (
+                    $sHash === false
+                    || !is_array($aAfter)
+                ) {
+                    $aVerify['error'] =
+                        'Runtime merge temporary file could not be verified.';
+
+                    return $aVerify;
+                }
+
+                foreach (
+                    array(
+                        'dev',
+                        'ino',
+                        'size',
+                        'mtime',
+                        'ctime',
+                        'uid',
+                        'gid',
+                        'nlink',
+                        'mode',
+                    )
+                    as $sKey
+                ) {
+                    if (
+                        (int)(
+                            $aBefore[$sKey]
+                            ?? -1
+                        )
+                        !==
+                        (int)(
+                            $aAfter[$sKey]
+                            ?? -1
+                        )
+                    ) {
+                        $aVerify['error'] =
+                            'Runtime merge temporary file changed during verification.';
+
+                        return $aVerify;
+                    }
+                }
+
+                $iExpectedMode =
+                    octdec(
+                        (string)(
+                            $aExpected['mode']
+                            ?? '0000'
+                        )
+                    );
+
+                if (
+                    !hash_equals(
+                        strtolower(
+                            (string)(
+                                $aExpected['sha256']
+                                ?? ''
+                            )
+                        ),
+                        strtolower($sHash)
+                    )
+                    || (int)$aAfter['size']
+                        !== (int)(
+                            $aExpected['size']
+                            ?? -1
+                        )
+                    || (
+                        (int)$aAfter['mode']
+                        & 07777
+                    ) !== $iExpectedMode
+                    || (int)$aAfter['uid']
+                        !== (int)(
+                            $aExpected['uid']
+                            ?? -1
+                        )
+                    || (int)$aAfter['gid']
+                        !== (int)(
+                            $aExpected['gid']
+                            ?? -1
+                        )
+                ) {
+                    $aVerify['error'] =
+                        'Runtime merge temporary file does not match the immutable manifest.';
+
+                    return $aVerify;
+                }
+
+                $aVerify['ok'] = true;
+                $aVerify['stat'] = $aAfter;
+                $aVerify['sha256'] =
+                    strtolower($sHash);
+
+                return $aVerify;
+            };
+
+        $aTemporary =
+            $verifyTemporary(
+                $sTemporary,
+                $aEntry
+            );
+
+        if (empty($aTemporary['ok'])) {
+            $aResult['error'] =
+                $aTemporary['error']
+                ?? 'Runtime merge temporary verification failed.';
+
+            return $aResult;
+        }
+
+        /*
+         * INTENT can represent several crash locations.
+         */
+        if ($sEntryState === 'intent') {
+            /*
+             * No destination was created. Remove only a proven
+             * Doctor temporary file, if present, then close the
+             * abandoned intent.
+             */
+            if (
+                (
+                    $aDestination['state']
+                    ?? ''
+                ) === 'absent'
+            ) {
+                if (!empty($aTemporary['exists'])) {
+                    if (
+                        (int)(
+                            $aTemporary['stat']['nlink']
+                            ?? -1
+                        ) !== 1
+                    ) {
+                        $aResult['error'] =
+                            'Abandoned runtime merge temporary file has an unsafe hard-link count.';
+
+                        return $aResult;
+                    }
+
+                    if (!@unlink($sTemporary)) {
+                        $aResult['error'] =
+                            'Could not remove abandoned runtime merge temporary file.';
+
+                        return $aResult;
+                    }
+
+                    clearstatcache(
+                        true,
+                        $sTemporary
+                    );
+
+                    if (
+                        file_exists($sTemporary)
+                        || is_link($sTemporary)
+                    ) {
+                        $aResult['error'] =
+                            'Abandoned runtime merge temporary file still exists after removal.';
+
+                        return $aResult;
+                    }
+
+                    $aResult['changes_applied'] = true;
+                }
+
+                $aRolledBack =
+                    $this->appendRuntimeMergeLedgerEvent(
+                        $iJournalId,
+                        'rolled_back',
+                        $iManifestIndex
+                    );
+
+                if (empty($aRolledBack['ok'])) {
+                    $aResult['error'] =
+                        'Abandoned runtime merge intent could not be closed: '
+                        . (
+                            $aRolledBack['error']
+                            ?? 'unknown error'
+                        );
+
+                    return $aResult;
+                }
+
+                $aProgress =
+                    $this->reconcileRuntimeMergeProgress(
+                        $iJournalId,
+                        'rollback'
+                    );
+
+                if (empty($aProgress['ok'])) {
+                    $aResult['error'] =
+                        'Runtime merge intent was rolled back but progress reconciliation failed: '
+                        . (
+                            $aProgress['error']
+                            ?? 'unknown error'
+                        );
+
+                    return $aResult;
+                }
+
+                $aResult['ok'] = true;
+                $aResult['rolled_back'] = true;
+                $aResult['changes_applied'] = true;
+                $aResult['runtime_files_changed'] =
+                    !empty(
+                        $aProgress[
+                            'runtime_files_changed'
+                        ]
+                    );
+
+                return $aResult;
+            }
+
+            /*
+             * Destination exists after intent. It must be an
+             * exact manifest file; any mismatch is untouchable.
+             */
+            if (
+                (
+                    $aDestination['state']
+                    ?? ''
+                ) !== 'exact'
+            ) {
+                $aResult['error'] =
+                    'Runtime merge intent has a non-exact destination; rollback refused.';
+
+                return $aResult;
+            }
+
+            /*
+             * Crash after link() but before removing the temp:
+             * both names must be the same inode before Doctor
+             * is allowed to remove the temporary name.
+             */
+            if (!empty($aTemporary['exists'])) {
+                if (
+                    (int)(
+                        $aTemporary['stat']['dev']
+                        ?? -1
+                    ) !== (int)(
+                        $aDestination[
+                            'actual_dev'
+                        ]
+                        ?? -2
+                    )
+                    || (int)(
+                        $aTemporary['stat']['ino']
+                        ?? -1
+                    ) !== (int)(
+                        $aDestination[
+                            'actual_ino'
+                        ]
+                        ?? -2
+                    )
+                    || (int)(
+                        $aTemporary['stat']['nlink']
+                        ?? -1
+                    ) !== 2
+                    || (int)(
+                        $aDestination[
+                            'actual_nlink'
+                        ]
+                        ?? -1
+                    ) !== 2
+                ) {
+                    $aResult['error'] =
+                        'Runtime merge intent destination and temporary path are not the expected two-link Doctor inode.';
+
+                    return $aResult;
+                }
+
+                if (!@unlink($sTemporary)) {
+                    $aResult['error'] =
+                        'Could not remove recovered runtime merge temporary hard link.';
+
+                    return $aResult;
+                }
+
+                clearstatcache(
+                    true,
+                    $sDestination
+                );
+
+                $aDestination =
+                    $this->inspectRuntimeMergeDestinationEntry(
+                        $iJournalId,
+                        $iManifestIndex
+                    );
+
+                if (
+                    empty($aDestination['ok'])
+                    || (
+                        $aDestination['state']
+                        ?? ''
+                    ) !== 'exact'
+                    || (int)(
+                        $aDestination[
+                            'actual_nlink'
+                        ]
+                        ?? -1
+                    ) !== 1
+                ) {
+                    $aResult['error'] =
+                        'Recovered runtime merge destination failed verification after temporary-link removal.';
+
+                    return $aResult;
+                }
+
+                $aResult['changes_applied'] = true;
+            } elseif (
+                (int)(
+                    $aDestination[
+                        'actual_nlink'
+                    ]
+                    ?? -1
+                ) !== 1
+            ) {
+                $aResult['error'] =
+                    'Runtime merge intent destination has an unsafe hard-link count.';
+
+                return $aResult;
+            }
+
+            /*
+             * Finalize durable ownership before deletion.
+             */
+            $aInstalled =
+                $this->appendRuntimeMergeLedgerEvent(
+                    $iJournalId,
+                    'installed',
+                    $iManifestIndex
+                );
+
+            if (empty($aInstalled['ok'])) {
+                $aResult['error'] =
+                    'Recovered runtime merge destination could not be journaled as installed: '
+                    . (
+                        $aInstalled['error']
+                        ?? 'unknown error'
+                    );
+
+                return $aResult;
+            }
+
+            $aResult['changes_applied'] = true;
+
+            /*
+             * Refresh ledger so recorded dev/inode/ctime become
+             * the authority for the actual removal below.
+             */
+            $aLedger =
+                $this->readAndVerifyRuntimeMergeLedger(
+                    $iJournalId
+                );
+
+            if (
+                empty($aLedger['ok'])
+                || (
+                    $aLedger[
+                        'entry_states'
+                    ][$iManifestIndex]
+                    ?? ''
+                ) !== 'installed'
+            ) {
+                $aResult['error'] =
+                    'Recovered runtime merge ownership could not be verified.';
+
+                return $aResult;
+            }
+
+            $sEntryState = 'installed';
+        }
+
+        /*
+         * INSTALLED rollback: locate the most recent installed
+         * ownership event for this manifest entry.
+         */
+        $aInstalledEvent = null;
+
+        $aEvents =
+            $aLedger['events']
+            ?? array();
+
+        for (
+            $i = count($aEvents) - 1;
+            $i >= 0;
+            $i--
+        ) {
+            $aEvent =
+                $aEvents[$i];
+
+            if (
+                ($aEvent['event'] ?? '')
+                    === 'installed'
+                && (int)(
+                    $aEvent[
+                        'manifest_index'
+                    ]
+                    ?? -1
+                ) === $iManifestIndex
+            ) {
+                $aInstalledEvent =
+                    $aEvent;
+                break;
+            }
+        }
+
+        if (!is_array($aInstalledEvent)) {
+            $aResult['error'] =
+                'Runtime merge installed ownership event was not found.';
+
+            return $aResult;
+        }
+
+        /*
+         * No temp path may remain once an installed event is
+         * authoritative.
+         */
+        if (
+            file_exists($sTemporary)
+            || is_link($sTemporary)
+        ) {
+            $aResult['error'] =
+                'Runtime merge installed entry still has a temporary path; automatic deletion refused.';
+
+            return $aResult;
+        }
+
+        $aDestination =
+            $this->inspectRuntimeMergeDestinationEntry(
+                $iJournalId,
+                $iManifestIndex
+            );
+
+        if (
+            empty($aDestination['ok'])
+            || (
+                $aDestination['state']
+                ?? ''
+            ) !== 'exact'
+            || (int)(
+                $aDestination[
+                    'actual_nlink'
+                ]
+                ?? -1
+            ) !== 1
+        ) {
+            $aResult['error'] =
+                'Installed runtime merge destination is no longer exact; deletion refused.';
+
+            return $aResult;
+        }
+
+        /*
+         * Exact bytes are not sufficient ownership proof.
+         * The filesystem object itself must still be the same
+         * dev/inode/ctime recorded by Doctor.
+         */
+        if (
+            (int)(
+                $aDestination['actual_dev']
+                ?? -1
+            ) !== (int)(
+                $aInstalledEvent[
+                    'installed_dev'
+                ]
+                ?? -2
+            )
+            || (int)(
+                $aDestination['actual_ino']
+                ?? -1
+            ) !== (int)(
+                $aInstalledEvent[
+                    'installed_ino'
+                ]
+                ?? -2
+            )
+            || (int)(
+                $aDestination['actual_ctime']
+                ?? -1
+            ) !== (int)(
+                $aInstalledEvent[
+                    'installed_ctime'
+                ]
+                ?? -2
+            )
+        ) {
+            $aResult['error'] =
+                'Installed runtime merge destination filesystem identity changed; deletion refused.';
+
+            return $aResult;
+        }
+
+        $sDestination =
+            (string)(
+                $aDestination['destination']
+                ?? ''
+            );
+
+        if (
+            $sDestination === ''
+            || !@unlink($sDestination)
+        ) {
+            $aResult['error'] =
+                'Verified runtime merge destination could not be removed.';
+
+            return $aResult;
+        }
+
+        clearstatcache(
+            true,
+            $sDestination
+        );
+
+        $aAbsent =
+            $this->inspectRuntimeMergeDestinationEntry(
+                $iJournalId,
+                $iManifestIndex
+            );
+
+        if (
+            empty($aAbsent['ok'])
+            || (
+                $aAbsent['state']
+                ?? ''
+            ) !== 'absent'
+        ) {
+            $aResult['error'] =
+                'Runtime merge destination removal could not be verified.';
+
+            return $aResult;
+        }
+
+        $aResult['changes_applied'] = true;
+
+        $aRolledBack =
+            $this->appendRuntimeMergeLedgerEvent(
+                $iJournalId,
+                'rolled_back',
+                $iManifestIndex
+            );
+
+        if (empty($aRolledBack['ok'])) {
+            $aResult['error'] =
+                'Runtime merge file was removed but rollback event could not be journaled. Recovery is required: '
+                . (
+                    $aRolledBack['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        /*
+         * Bounded batch rollback may defer only the expensive
+         * aggregate progress rebuild. The filesystem deletion has
+         * already been identity-proved, verified absent and durably
+         * recorded as rolled_back before this point.
+         *
+         * Single-entry recovery keeps the historical behavior and
+         * reconciles immediately.
+         */
+        if ($bDeferProgressReconciliation) {
+            $aResult['ok'] = true;
+            $aResult['rolled_back'] = true;
+            $aResult['changes_applied'] = true;
+            $aResult['runtime_files_changed'] = true;
+
+            return $aResult;
+        }
+
+        $aProgress =
+            $this->reconcileRuntimeMergeProgress(
+                $iJournalId,
+                'rollback'
+            );
+
+        if (empty($aProgress['ok'])) {
+            $aResult['error'] =
+                'Runtime merge rollback was journaled but progress reconciliation failed: '
+                . (
+                    $aProgress['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $aResult['ok'] = true;
+        $aResult['rolled_back'] = true;
+        $aResult['changes_applied'] = true;
+        $aResult['runtime_files_changed'] =
+            !empty(
+                $aProgress[
+                    'runtime_files_changed'
+                ]
+            );
+        $aResult['copied_files'] =
+            (int)(
+                $aProgress['copied_files']
+                ?? 0
+            );
+        $aResult['copied_bytes'] =
+            (int)(
+                $aProgress['copied_bytes']
+                ?? 0
+            );
+
+        return $aResult;
+    }
+
+
+    protected function executeRuntimeMergeBatchFromSession(
+        $iJournalId,
+        $iStartIndex = 0,
+        $iMaxFiles = 10,
+        $iExpectedLedgerEvents = null
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iStartIndex = (int)$iStartIndex;
+        $iMaxFiles = (int)$iMaxFiles;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'start_index' => $iStartIndex,
+            'next_index' => $iStartIndex,
+            'max_files' => $iMaxFiles,
+            'installed_count' => 0,
+            'installed_bytes' => 0,
+            'installed_indexes' => array(),
+            'skipped_installed' => array(),
+            'error_index' => -1,
+            'starting_session_id' => '',
+            'starting_ledger_events' => 0,
+            'final_ledger_events' => 0,
+            'heartbeat_start_ok' => false,
+            'heartbeat_final_ok' => false,
+            'heartbeat_errors' => array(),
+            'error' => '',
+        );
+
+        /*
+         * Optimized executor remains deliberately bounded.
+         * The proven performance ceiling is currently twenty-five
+         * newly installed files per invocation.
+         */
+        if (
+            $iStartIndex < 0
+            || $iMaxFiles < 1
+            || $iMaxFiles > 25
+        ) {
+            $aResult['error'] =
+                'Fast runtime merge batch parameters are outside the guarded limits.';
+
+            return $aResult;
+        }
+
+        $aSession =
+            $this->prepareRuntimeMergeBatchSession(
+                $iJournalId
+            );
+
+        if (empty($aSession['ok'])) {
+            $aResult['error'] =
+                'Fast runtime merge batch session could not be prepared: '
+                . (
+                    $aSession['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        /*
+         * Optional optimistic-concurrency checkpoint.
+         * A stale browser request may never advance a newer ledger.
+         */
+        if (
+            $iExpectedLedgerEvents !== null
+            && (int)($aSession['ledger_event_count'] ?? -1)
+                !== (int)$iExpectedLedgerEvents
+        ) {
+            $aResult['error'] =
+                'Runtime merge continuation checkpoint is stale. '
+                . 'Reload the repair state before continuing.';
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aSession['manifest']
+            ?? array();
+
+        $iManifestCount =
+            count($aManifest);
+
+        $aResult['starting_session_id'] =
+            (string)(
+                $aSession['session_id']
+                ?? ''
+            );
+
+        $aResult['starting_ledger_events'] =
+            (int)(
+                $aSession['ledger_event_count']
+                ?? 0
+            );
+
+        if ($iStartIndex >= $iManifestCount) {
+            $aResult['ok'] = true;
+            $aResult['next_index'] =
+                $iManifestCount;
+            $aResult['complete'] =
+                true;
+
+            return $aResult;
+        }
+
+        /*
+         * Public telemetry is intentionally outside the
+         * ledger critical section. Failure is diagnostic
+         * only and must never invalidate a durable merge.
+         */
+        $aHeartbeatStart =
+            $this->writeRuntimeMergeMaintenanceHeartbeat(
+                array(
+                    'phase' => 'runtime_merging',
+                )
+            );
+
+        $aResult['heartbeat_start_ok'] =
+            !empty($aHeartbeatStart['ok']);
+
+        if (empty($aHeartbeatStart['ok'])) {
+            $aResult['heartbeat_errors'][] =
+                (string)(
+                    $aHeartbeatStart['error']
+                    ?? 'Initial maintenance heartbeat failed.'
+                );
+        }
+
+        $sLedgerPath =
+            (string)(
+                $aSession['ledger_path']
+                ?? ''
+            );
+
+        $sManifestPath =
+            (string)(
+                $aSession['manifest_path']
+                ?? ''
+            );
+
+        $aIdentity =
+            $aSession['identity']
+            ?? array();
+
+        if (
+            $sLedgerPath === ''
+            || !is_file($sLedgerPath)
+            || is_link($sLedgerPath)
+            || $sManifestPath === ''
+            || !is_file($sManifestPath)
+            || is_link($sManifestPath)
+        ) {
+            $aResult['error'] =
+                'Fast runtime merge batch sidecar paths are unavailable or unsafe.';
+
+            return $aResult;
+        }
+
+        $hLedger =
+            @fopen(
+                $sLedgerPath,
+                'c+b'
+            );
+
+        if ($hLedger === false) {
+            $aResult['error'] =
+                'Fast runtime merge batch ledger could not be opened.';
+
+            return $aResult;
+        }
+
+        if (
+            !@flock(
+                $hLedger,
+                LOCK_EX | LOCK_NB
+            )
+        ) {
+            @fclose($hLedger);
+
+            $aResult['error'] =
+                'Fast runtime merge batch could not acquire the exclusive ledger lock.';
+
+            return $aResult;
+        }
+
+        /*
+         * Re-prove the exact cryptographic session boundary
+         * after acquiring the exclusive ledger lock.
+         */
+        clearstatcache(
+            true,
+            $sLedgerPath
+        );
+
+        $aLedgerBefore =
+            @lstat(
+                $sLedgerPath
+            );
+
+        $aLedgerHandle =
+            @fstat(
+                $hLedger
+            );
+
+        if (
+            !is_array($aLedgerBefore)
+            || !is_array($aLedgerHandle)
+        ) {
+            @flock($hLedger, LOCK_UN);
+            @fclose($hLedger);
+
+            $aResult['error'] =
+                'Fast runtime merge batch ledger metadata could not be verified under lock.';
+
+            return $aResult;
+        }
+
+        $iExpectedDev =
+            (int)(
+                $aIdentity['ledger_dev']
+                ?? -1
+            );
+
+        $iExpectedIno =
+            (int)(
+                $aIdentity['ledger_ino']
+                ?? -1
+            );
+
+        $iExpectedBytes =
+            (int)(
+                $aSession['ledger_file_bytes']
+                ?? -1
+            );
+
+        if (
+            (int)(
+                $aLedgerBefore['dev']
+                ?? -1
+            ) !== $iExpectedDev
+            || (int)(
+                $aLedgerHandle['dev']
+                ?? -2
+            ) !== $iExpectedDev
+            || (int)(
+                $aLedgerBefore['ino']
+                ?? -1
+            ) !== $iExpectedIno
+            || (int)(
+                $aLedgerHandle['ino']
+                ?? -2
+            ) !== $iExpectedIno
+            || (int)(
+                $aLedgerBefore['nlink']
+                ?? 0
+            ) !== 1
+            || (int)(
+                $aLedgerHandle['nlink']
+                ?? 0
+            ) !== 1
+            || (
+                (int)$aLedgerBefore['mode']
+                & 07777
+            ) !== 0600
+            || (
+                (int)$aLedgerHandle['mode']
+                & 07777
+            ) !== 0600
+            || (int)(
+                $aLedgerBefore['size']
+                ?? -1
+            ) !== $iExpectedBytes
+            || (int)(
+                $aLedgerHandle['size']
+                ?? -1
+            ) !== $iExpectedBytes
+        ) {
+            @flock($hLedger, LOCK_UN);
+            @fclose($hLedger);
+
+            $aResult['error'] =
+                'Fast runtime merge batch locked ledger boundary does not match the prepared session.';
+
+            return $aResult;
+        }
+
+        $sLedgerHash =
+            @hash_file(
+                'sha256',
+                $sLedgerPath
+            );
+
+        clearstatcache(
+            true,
+            $sLedgerPath
+        );
+
+        $aLedgerAfter =
+            @lstat(
+                $sLedgerPath
+            );
+
+        if (
+            $sLedgerHash === false
+            || !is_array($aLedgerAfter)
+            || (int)(
+                $aLedgerAfter['dev']
+                ?? -1
+            ) !== $iExpectedDev
+            || (int)(
+                $aLedgerAfter['ino']
+                ?? -1
+            ) !== $iExpectedIno
+            || (int)(
+                $aLedgerAfter['size']
+                ?? -1
+            ) !== $iExpectedBytes
+            || !hash_equals(
+                strtolower(
+                    (string)(
+                        $aSession[
+                            'ledger_file_sha256'
+                        ]
+                        ?? ''
+                    )
+                ),
+                strtolower($sLedgerHash)
+            )
+        ) {
+            @flock($hLedger, LOCK_UN);
+            @fclose($hLedger);
+
+            $aResult['error'] =
+                'Fast runtime merge batch ledger changed between session preparation and locked execution.';
+
+            return $aResult;
+        }
+
+        /*
+         * Re-prove the immutable manifest sidecar once at the
+         * locked batch boundary. Source content is still rehashed
+         * individually by the single-entry installer.
+         */
+        clearstatcache(
+            true,
+            $sManifestPath
+        );
+
+        $aManifestBefore =
+            @lstat(
+                $sManifestPath
+            );
+
+        $sManifestHash =
+            @hash_file(
+                'sha256',
+                $sManifestPath
+            );
+
+        clearstatcache(
+            true,
+            $sManifestPath
+        );
+
+        $aManifestAfter =
+            @lstat(
+                $sManifestPath
+            );
+
+        if (
+            !is_array($aManifestBefore)
+            || !is_array($aManifestAfter)
+            || $sManifestHash === false
+            || (int)(
+                $aManifestBefore['dev']
+                ?? -1
+            ) !== (int)(
+                $aManifestAfter['dev']
+                ?? -2
+            )
+            || (int)(
+                $aManifestBefore['ino']
+                ?? -1
+            ) !== (int)(
+                $aManifestAfter['ino']
+                ?? -2
+            )
+            || (int)(
+                $aManifestBefore['size']
+                ?? -1
+            ) !== (int)(
+                $aManifestAfter['size']
+                ?? -2
+            )
+            || (int)(
+                $aManifestBefore['mtime']
+                ?? -1
+            ) !== (int)(
+                $aManifestAfter['mtime']
+                ?? -2
+            )
+            || (int)(
+                $aManifestBefore['ctime']
+                ?? -1
+            ) !== (int)(
+                $aManifestAfter['ctime']
+                ?? -2
+            )
+            || (int)(
+                $aManifestAfter['nlink']
+                ?? 0
+            ) !== 1
+            || (
+                (int)$aManifestAfter['mode']
+                & 07777
+            ) !== 0600
+            || !hash_equals(
+                strtolower(
+                    (string)(
+                        $aIdentity[
+                            'manifest_file_sha256'
+                        ]
+                        ?? ''
+                    )
+                ),
+                strtolower($sManifestHash)
+            )
+        ) {
+            @flock($hLedger, LOCK_UN);
+            @fclose($hLedger);
+
+            $aResult['error'] =
+                'Fast runtime merge batch immutable manifest boundary changed before execution.';
+
+            return $aResult;
+        }
+
+        /*
+         * The compact DB identity must also still match this
+         * exact session before the first install is attempted.
+         */
+        $aJournal =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        $aJournalState =
+            json_decode(
+                (string)(
+                    $aJournal['result_json']
+                    ?? ''
+                ),
+                true
+            );
+
+        $aJournalMerge =
+            is_array($aJournalState)
+                ? (
+                    $aJournalState['merge']
+                    ?? array()
+                )
+                : array();
+
+        if (
+            empty($aJournal)
+            || (string)(
+                $aJournal['status']
+                ?? ''
+            ) !== 'runtime_merging'
+            || !is_array($aJournalState)
+            || (
+                $aJournalState['phase']
+                ?? ''
+            ) !== 'runtime_merging'
+            || empty(
+                $aJournalState[
+                    'runtime_moved'
+                ]
+            )
+            || (string)(
+                $aJournalMerge['ledger_path']
+                ?? ''
+            ) !== $sLedgerPath
+            || (string)(
+                $aJournalMerge['ledger_id']
+                ?? ''
+            ) !== (string)(
+                $aIdentity['ledger_id']
+                ?? ''
+            )
+            || (string)(
+                $aJournalMerge[
+                    'execution_manifest_id'
+                ]
+                ?? ''
+            ) !== (string)(
+                $aIdentity[
+                    'execution_manifest_id'
+                ]
+                ?? ''
+            )
+            || (string)(
+                $aJournalMerge[
+                    'manifest_file_sha256'
+                ]
+                ?? ''
+            ) !== (string)(
+                $aIdentity[
+                    'manifest_file_sha256'
+                ]
+                ?? ''
+            )
+            || (int)(
+                $aJournalMerge[
+                    'ledger_events'
+                ]
+                ?? -1
+            ) !== (int)(
+                $aSession[
+                    'ledger_event_count'
+                ]
+                ?? -2
+            )
+        ) {
+            @flock($hLedger, LOCK_UN);
+            @fclose($hLedger);
+
+            $aResult['error'] =
+                'Fast runtime merge batch journal boundary no longer matches the prepared session.';
+
+            return $aResult;
+        }
+
+        $iInstalledThisBatch = 0;
+        $iInstalledBytesThisBatch = 0;
+        $iIndex = $iStartIndex;
+
+        try {
+            while (
+                $iIndex < $iManifestCount
+                && $iInstalledThisBatch
+                    < $iMaxFiles
+            ) {
+                $sState =
+                    (string)(
+                        $aSession[
+                            'entry_states'
+                        ][$iIndex]
+                        ?? ''
+                    );
+
+                if ($sState === 'installed') {
+                    $aResult[
+                        'skipped_installed'
+                    ][] = $iIndex;
+
+                    $iIndex++;
+                    continue;
+                }
+
+                if (
+                    $sState !== ''
+                    && $sState
+                        !== 'rolled_back'
+                ) {
+                    $aResult['error_index'] =
+                        $iIndex;
+
+                    $aResult['error'] =
+                        'Fast runtime merge batch encountered manifest entry '
+                        . $iIndex
+                        . ' in recovery-required state '
+                        . $sState
+                        . '.';
+
+                    break;
+                }
+
+                $aInstall =
+                    $this->installRuntimeMergeManifestEntryFromSession(
+                        $aSession,
+                        $hLedger,
+                        $iIndex
+                    );
+
+                if (empty($aInstall['ok'])) {
+                    $aResult['error_index'] =
+                        $iIndex;
+
+                    $aResult['error'] =
+                        'Fast runtime merge batch stopped at manifest entry '
+                        . $iIndex
+                        . ': '
+                        . (
+                            $aInstall['error']
+                            ?? 'unknown installation error'
+                        );
+
+                    break;
+                }
+
+                $iInstalledThisBatch++;
+
+                $iInstalledBytesThisBatch +=
+                    (int)(
+                        $aInstall['size']
+                        ?? 0
+                    );
+
+                $aResult[
+                    'installed_indexes'
+                ][] = $iIndex;
+
+                $aResult['changes_applied'] =
+                    true;
+
+                $iIndex++;
+            }
+        } catch (Throwable $e) {
+            $aResult['error_index'] =
+                $iIndex;
+
+            $aResult['error'] =
+                'Fast runtime merge batch raised an unexpected exception at manifest entry '
+                . $iIndex
+                . ': '
+                . $e->getMessage();
+        }
+
+        $aResult['installed_count'] =
+            $iInstalledThisBatch;
+
+        $aResult['installed_bytes'] =
+            $iInstalledBytesThisBatch;
+
+        $aResult['next_index'] =
+            $iIndex;
+
+        $aResult['final_ledger_events'] =
+            (int)(
+                $aSession[
+                    'ledger_event_count'
+                ]
+                ?? 0
+            );
+
+        /*
+         * Never retain the batch lock while running the full
+         * authoritative reference verifier.
+         */
+        @flock(
+            $hLedger,
+            LOCK_UN
+        );
+
+        @fclose(
+            $hLedger
+        );
+
+        if ($aResult['error'] !== '') {
+            return $aResult;
+        }
+
+        /*
+         * One full authoritative verification per completed
+         * bounded batch, rather than once per event/file.
+         */
+        $aFinal =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (
+            empty($aFinal['ok'])
+            || (int)(
+                $aFinal[
+                    'unjournaled_events'
+                ]
+                ?? -1
+            ) !== 0
+            || (int)(
+                $aFinal['event_count']
+                ?? -1
+            ) !== (int)(
+                $aSession[
+                    'ledger_event_count'
+                ]
+                ?? -2
+            )
+            || (int)(
+                $aFinal[
+                    'journal_event_count'
+                ]
+                ?? -1
+            ) !== (int)(
+                $aSession[
+                    'ledger_event_count'
+                ]
+                ?? -2
+            )
+        ) {
+            $aResult['error'] =
+                !empty($aFinal['error'])
+                    ? (string)$aFinal['error']
+                    : 'Fast runtime merge batch failed its final authoritative ledger verification.';
+
+            return $aResult;
+        }
+
+        foreach (
+            $aResult['installed_indexes']
+            as $iInstalledIndex
+        ) {
+            if (
+                (
+                    $aFinal[
+                        'entry_states'
+                    ][$iInstalledIndex]
+                    ?? ''
+                ) !== 'installed'
+            ) {
+                $aResult['error_index'] =
+                    $iInstalledIndex;
+
+                $aResult['error'] =
+                    'Fast runtime merge batch final reference state does not confirm an installed entry.';
+
+                return $aResult;
+            }
+        }
+
+        $aFinalState =
+            $aFinal['state']
+            ?? array();
+
+        $aProgress =
+            $aFinalState[
+                'merge'
+            ]['progress']
+            ?? array();
+
+        if (
+            (int)(
+                $aProgress[
+                    'copied_files'
+                ]
+                ?? -1
+            ) !== (int)(
+                $aSession[
+                    'installed_count'
+                ]
+                ?? -2
+            )
+            || (int)(
+                $aProgress[
+                    'copied_bytes'
+                ]
+                ?? -1
+            ) !== (int)(
+                $aSession[
+                    'installed_bytes'
+                ]
+                ?? -2
+            )
+            || (
+                !empty(
+                    $aProgress[
+                        'runtime_files_changed'
+                    ]
+                )
+                !== (
+                    (int)(
+                        $aSession[
+                            'installed_count'
+                        ]
+                        ?? 0
+                    ) > 0
+                )
+            )
+        ) {
+            $aResult['error'] =
+                'Fast runtime merge batch final compact progress does not match the authoritative ledger state.';
+
+            return $aResult;
+        }
+
+        /*
+         * Final telemetry is published only after the
+         * authoritative ledger and compact progress state
+         * have both been verified. It remains non-fatal.
+         */
+        $aHeartbeatFinal =
+            $this->writeRuntimeMergeMaintenanceHeartbeat(
+                array(
+                    'phase' => 'runtime_merging',
+                )
+            );
+
+        $aResult['heartbeat_final_ok'] =
+            !empty($aHeartbeatFinal['ok']);
+
+        if (empty($aHeartbeatFinal['ok'])) {
+            $aResult['heartbeat_errors'][] =
+                (string)(
+                    $aHeartbeatFinal['error']
+                    ?? 'Final maintenance heartbeat failed.'
+                );
+        }
+
+        $aResult['ok'] =
+            true;
+
+        $aResult['manifest_count'] =
+            $iManifestCount;
+
+        $aResult['complete'] =
+            $iIndex >= $iManifestCount;
+
+        $aResult['total_installed_count'] =
+            (int)(
+                $aSession[
+                    'installed_count'
+                ]
+                ?? 0
+            );
+
+        $aResult['total_installed_bytes'] =
+            (int)(
+                $aSession[
+                    'installed_bytes'
+                ]
+                ?? 0
+            );
+
+        return $aResult;
+    }
+
+
+    protected function executeRuntimeMergeBatch(
+        $iJournalId,
+        $iStartIndex = 0,
+        $iMaxFiles = 10
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iStartIndex = (int)$iStartIndex;
+        $iMaxFiles = (int)$iMaxFiles;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'start_index' => $iStartIndex,
+            'next_index' => $iStartIndex,
+            'max_files' => $iMaxFiles,
+            'installed_count' => 0,
+            'installed_bytes' => 0,
+            'installed_indexes' => array(),
+            'skipped_installed' => array(),
+            'error_index' => -1,
+            'error' => '',
+        );
+
+        /*
+         * Initial implementation is intentionally capped.
+         * Scaling beyond ten files per invocation requires a
+         * separate explicit code change after live testing.
+         */
+        if (
+            $iStartIndex < 0
+            || $iMaxFiles < 1
+            || $iMaxFiles > 10
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch parameters are outside the guarded limits.';
+
+            return $aResult;
+        }
+
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (empty($aLedger['ok'])) {
+            $aResult['error'] =
+                'Runtime merge ledger verification failed before batch execution: '
+                . (
+                    $aLedger['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        if (
+            (int)(
+                $aLedger['unjournaled_events']
+                ?? -1
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch refused because the durable ledger is ahead of the journal.';
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aLedger['manifest']
+            ?? array();
+
+        $iManifestCount =
+            count($aManifest);
+
+        if ($iStartIndex >= $iManifestCount) {
+            $aResult['ok'] = true;
+            $aResult['next_index'] =
+                $iManifestCount;
+
+            return $aResult;
+        }
+
+        $iInstalled = 0;
+        $iInstalledBytes = 0;
+        $iIndex = $iStartIndex;
+
+        while (
+            $iIndex < $iManifestCount
+            && $iInstalled < $iMaxFiles
+        ) {
+            /*
+             * Re-read the durable ledger before every entry.
+             * This is intentionally conservative for the first
+             * bounded batch implementation.
+             */
+            $aCurrent =
+                $this->readAndVerifyRuntimeMergeLedger(
+                    $iJournalId
+                );
+
+            if (
+                empty($aCurrent['ok'])
+                || (int)(
+                    $aCurrent[
+                        'unjournaled_events'
+                    ]
+                    ?? -1
+                ) !== 0
+            ) {
+                $aResult['error_index'] =
+                    $iIndex;
+
+                $aResult['error'] =
+                    !empty($aCurrent['error'])
+                        ? (string)$aCurrent['error']
+                        : 'Runtime merge ledger lost synchronization during batch execution.';
+
+                $aResult['next_index'] =
+                    $iIndex;
+
+                return $aResult;
+            }
+
+            $sState =
+                (string)(
+                    $aCurrent[
+                        'entry_states'
+                    ][$iIndex]
+                    ?? ''
+                );
+
+            if ($sState === 'installed') {
+                $aResult[
+                    'skipped_installed'
+                ][] = $iIndex;
+
+                $iIndex++;
+                continue;
+            }
+
+            if (
+                $sState !== ''
+                && $sState !== 'rolled_back'
+            ) {
+                $aResult['error_index'] =
+                    $iIndex;
+
+                $aResult['error'] =
+                    'Runtime merge batch encountered entry '
+                    . $iIndex
+                    . ' in recovery-required state '
+                    . $sState
+                    . '.';
+
+                $aResult['next_index'] =
+                    $iIndex;
+
+                return $aResult;
+            }
+
+            /*
+             * The single-entry installer owns all source,
+             * destination, temp, ledger, identity and progress
+             * guarantees. Batch mode does not bypass them.
+             */
+            $aInstall =
+                $this->installRuntimeMergeManifestEntry(
+                    $iJournalId,
+                    $iIndex
+                );
+
+            if (empty($aInstall['ok'])) {
+                $aResult['error_index'] =
+                    $iIndex;
+
+                $aResult['error'] =
+                    'Runtime merge batch stopped at manifest entry '
+                    . $iIndex
+                    . ': '
+                    . (
+                        $aInstall['error']
+                        ?? 'unknown installation error'
+                    );
+
+                $aResult['next_index'] =
+                    $iIndex;
+
+                return $aResult;
+            }
+
+            $iInstalled++;
+            $iInstalledBytes +=
+                (int)(
+                    $aInstall['size']
+                    ?? 0
+                );
+
+            $aResult[
+                'installed_indexes'
+            ][] = $iIndex;
+
+            $aResult['changes_applied'] =
+                true;
+
+            $iIndex++;
+        }
+
+        /*
+         * One final synchronized ledger proof after the batch.
+         */
+        $aFinal =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (
+            empty($aFinal['ok'])
+            || (int)(
+                $aFinal[
+                    'unjournaled_events'
+                ]
+                ?? -1
+            ) !== 0
+        ) {
+            $aResult['error_index'] =
+                $iIndex;
+
+            $aResult['error'] =
+                !empty($aFinal['error'])
+                    ? (string)$aFinal['error']
+                    : 'Runtime merge ledger final batch verification failed.';
+
+            $aResult['next_index'] =
+                $iIndex;
+
+            return $aResult;
+        }
+
+        foreach (
+            $aResult['installed_indexes']
+            as $iInstalledIndex
+        ) {
+            if (
+                (
+                    $aFinal[
+                        'entry_states'
+                    ][$iInstalledIndex]
+                    ?? ''
+                ) !== 'installed'
+            ) {
+                $aResult['error_index'] =
+                    $iInstalledIndex;
+
+                $aResult['error'] =
+                    'Runtime merge batch final state does not show an installed entry as installed.';
+
+                $aResult['next_index'] =
+                    $iInstalledIndex;
+
+                return $aResult;
+            }
+        }
+
+        $aResult['ok'] = true;
+        $aResult['installed_count'] =
+            $iInstalled;
+        $aResult['installed_bytes'] =
+            $iInstalledBytes;
+        $aResult['next_index'] =
+            $iIndex;
+        $aResult['manifest_count'] =
+            $iManifestCount;
+        $aResult['complete'] =
+            $iIndex >= $iManifestCount;
+
+        return $aResult;
+    }
+
+
+    protected function rollbackRuntimeMergeBatch(
+        $iJournalId,
+        $iStartIndex = 0,
+        $iFileCount = 10
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iStartIndex = (int)$iStartIndex;
+        $iFileCount = (int)$iFileCount;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'start_index' => $iStartIndex,
+            'file_count' => $iFileCount,
+            'rolled_back_count' => 0,
+            'rolled_back_indexes' => array(),
+            'skipped_indexes' => array(),
+            'error_index' => -1,
+            'error' => '',
+        );
+
+        /*
+         * Initial bounded rollback is intentionally limited to
+         * the same maximum range as the bounded installer.
+         */
+        if (
+            $iStartIndex < 0
+            || $iFileCount < 1
+            || $iFileCount > 10
+        ) {
+            $aResult['error'] =
+                'Runtime merge rollback batch parameters are outside the guarded limits.';
+
+            return $aResult;
+        }
+
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (empty($aLedger['ok'])) {
+            $aResult['error'] =
+                'Runtime merge ledger verification failed before batch rollback: '
+                . (
+                    $aLedger['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        if (
+            (int)(
+                $aLedger['unjournaled_events']
+                ?? -1
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch rollback refused because the durable ledger is ahead of the journal.';
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aLedger['manifest']
+            ?? array();
+
+        $iManifestCount =
+            count($aManifest);
+
+        if ($iStartIndex >= $iManifestCount) {
+            $aResult['error'] =
+                'Runtime merge rollback start index is outside the manifest.';
+
+            return $aResult;
+        }
+
+        $iEndExclusive =
+            min(
+                $iStartIndex + $iFileCount,
+                $iManifestCount
+            );
+
+        /*
+         * Reverse order is deliberate: unwind the newest portion
+         * of a bounded installation range first.
+         */
+        for (
+            $iIndex = $iEndExclusive - 1;
+            $iIndex >= $iStartIndex;
+            $iIndex--
+        ) {
+            /*
+             * The batch already established one authoritative ledger
+             * snapshot before entering this loop. Use that immutable
+             * starting state only to decide whether this unique entry
+             * needs work.
+             *
+             * rollbackRuntimeMergeManifestEntry() independently
+             * re-verifies the authoritative ledger immediately before
+             * any mutation, so repeating a full ledger verification
+             * here would duplicate the same safety gate for every file.
+             */
+            $sState =
+                (string)(
+                    $aLedger[
+                        'entry_states'
+                    ][$iIndex]
+                    ?? ''
+                );
+
+            /*
+             * Never-installed and already-rolled-back entries
+             * require no mutation.
+             */
+            if (
+                $sState === ''
+                || $sState === 'rolled_back'
+            ) {
+                $aResult[
+                    'skipped_indexes'
+                ][] = $iIndex;
+
+                continue;
+            }
+
+            /*
+             * The single-entry rollback helper knows how to
+             * recover either an unfinished intent or a proven
+             * installed entry.
+             */
+            if (
+                $sState !== 'intent'
+                && $sState !== 'installed'
+            ) {
+                $aResult['error_index'] =
+                    $iIndex;
+
+                $aResult['error'] =
+                    'Runtime merge batch rollback encountered entry '
+                    . $iIndex
+                    . ' in unsupported state '
+                    . $sState
+                    . '.';
+
+                return $aResult;
+            }
+
+            $aRollback =
+                $this->rollbackRuntimeMergeManifestEntry(
+                    $iJournalId,
+                    $iIndex,
+                    true
+                );
+
+            if (empty($aRollback['ok'])) {
+                $aResult['error_index'] =
+                    $iIndex;
+
+                $aResult['error'] =
+                    'Runtime merge batch rollback stopped at manifest entry '
+                    . $iIndex
+                    . ': '
+                    . (
+                        $aRollback['error']
+                        ?? 'unknown rollback error'
+                    );
+
+                return $aResult;
+            }
+
+            $aResult['changes_applied'] =
+                true;
+
+            $aResult[
+                'rolled_back_indexes'
+            ][] = $iIndex;
+
+            $aResult['rolled_back_count']++;
+        }
+
+        /*
+         * All per-file rolled_back events are now durable.
+         * Rebuild aggregate runtime progress exactly once for
+         * this bounded batch before the final ledger proof.
+         */
+        if ($aResult['rolled_back_count'] > 0) {
+            $aProgress =
+                $this->reconcileRuntimeMergeProgress(
+                    $iJournalId,
+                    'rollback'
+                );
+
+            if (empty($aProgress['ok'])) {
+                $aResult['error'] =
+                    'Runtime merge batch rollback was journaled but final progress reconciliation failed: '
+                    . (
+                        $aProgress['error']
+                        ?? 'unknown reconciliation error'
+                    );
+
+                return $aResult;
+            }
+        }
+
+        /*
+         * Final proof: no entry in this requested range may
+         * remain in intent or installed state.
+         */
+        $aFinal =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (
+            empty($aFinal['ok'])
+            || (int)(
+                $aFinal[
+                    'unjournaled_events'
+                ]
+                ?? -1
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                !empty($aFinal['error'])
+                    ? (string)$aFinal['error']
+                    : 'Runtime merge ledger final rollback verification failed.';
+
+            return $aResult;
+        }
+
+        for (
+            $iIndex = $iStartIndex;
+            $iIndex < $iEndExclusive;
+            $iIndex++
+        ) {
+            $sState =
+                (string)(
+                    $aFinal[
+                        'entry_states'
+                    ][$iIndex]
+                    ?? ''
+                );
+
+            if (
+                $sState === 'intent'
+                || $sState === 'installed'
+            ) {
+                $aResult['error_index'] =
+                    $iIndex;
+
+                $aResult['error'] =
+                    'Runtime merge batch rollback left manifest entry '
+                    . $iIndex
+                    . ' in active state '
+                    . $sState
+                    . '.';
+
+                return $aResult;
+            }
+        }
+
+        $aResult['ok'] = true;
+        $aResult['end_index_exclusive'] =
+            $iEndExclusive;
+
+        return $aResult;
+    }
+
+
+    protected function reconcileRuntimeMergeLedgerTail(
+        $iJournalId
+    ) {
+        $iJournalId = (int)$iJournalId;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'event_count' => 0,
+            'journal_event_count' => 0,
+            'reconciled_event' => '',
+            'manifest_index' => -1,
+            'progress_reconciled' => false,
+            'error' => '',
+        );
+
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (empty($aLedger['ok'])) {
+            $aResult['error'] =
+                'Runtime merge ledger could not be verified for tail recovery: '
+                . (
+                    $aLedger['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $iActual =
+            (int)(
+                $aLedger['event_count']
+                ?? -1
+            );
+
+        $iJournal =
+            (int)(
+                $aLedger['journal_event_count']
+                ?? -1
+            );
+
+        $iTail =
+            (int)(
+                $aLedger['unjournaled_events']
+                ?? -1
+            );
+
+        $aResult['event_count'] =
+            $iActual;
+
+        $aResult['journal_event_count'] =
+            $iJournal;
+
+        /*
+         * Already synchronized: safe no-op.
+         */
+        if ($iTail === 0) {
+            $aResult['ok'] = true;
+            return $aResult;
+        }
+
+        /*
+         * Current writer stops immediately when an fsync'd
+         * event cannot be reflected in the DB. Therefore more
+         * than one durable unjournaled event is impossible under
+         * the supported writer protocol and must fail closed.
+         */
+        if (
+            $iTail !== 1
+            || $iActual !== ($iJournal + 1)
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger has an unsupported durable tail length.';
+
+            return $aResult;
+        }
+
+        $aEvents =
+            $aLedger['events']
+            ?? array();
+
+        if (
+            empty($aEvents)
+            || !is_array(
+                $aEvents[
+                    count($aEvents) - 1
+                ]
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge durable tail event could not be located.';
+
+            return $aResult;
+        }
+
+        $aEvent =
+            $aEvents[
+                count($aEvents) - 1
+            ];
+
+        if (
+            (int)(
+                $aEvent['sequence']
+                ?? -1
+            ) !== $iActual
+        ) {
+            $aResult['error'] =
+                'Runtime merge durable tail sequence is invalid.';
+
+            return $aResult;
+        }
+
+        $sEvent =
+            (string)(
+                $aEvent['event']
+                ?? ''
+            );
+
+        $iIndex =
+            (int)(
+                $aEvent['manifest_index']
+                ?? -1
+            );
+
+        if (
+            !in_array(
+                $sEvent,
+                array(
+                    'intent',
+                    'installed',
+                    'rolled_back',
+                ),
+                true
+            )
+            || $iIndex < 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge durable tail event type or manifest index is invalid.';
+
+            return $aResult;
+        }
+
+        $aResult['reconciled_event'] =
+            $sEvent;
+
+        $aResult['manifest_index'] =
+            $iIndex;
+
+        /*
+         * Prove the live destination before allowing the DB to
+         * acknowledge this durable event.
+         */
+        $aDestination =
+            $this->inspectRuntimeMergeDestinationEntry(
+                $iJournalId,
+                $iIndex
+            );
+
+        if (empty($aDestination['ok'])) {
+            $aResult['error'] =
+                'Runtime merge durable tail destination could not be verified: '
+                . (
+                    $aDestination['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $aState =
+            $aLedger['state']
+            ?? array();
+
+        $sExecutionId =
+            strtolower(
+                (string)(
+                    $aState[
+                        'merge'
+                    ]['execution_manifest_id']
+                    ?? ''
+                )
+            );
+
+        if (strlen($sExecutionId) !== 64) {
+            $aResult['error'] =
+                'Runtime merge execution identity is invalid during tail recovery.';
+
+            return $aResult;
+        }
+
+        $sDestination =
+            (string)(
+                $aDestination['destination']
+                ?? ''
+            );
+
+        if ($sDestination === '') {
+            $aResult['error'] =
+                'Runtime merge durable tail destination path is missing.';
+
+            return $aResult;
+        }
+
+        $sTemporary =
+            dirname($sDestination)
+            . DIRECTORY_SEPARATOR
+            . '.mud-merge-'
+            . $iJournalId
+            . '-'
+            . $iIndex
+            . '-'
+            . substr(
+                $sExecutionId,
+                0,
+                12
+            )
+            . '.tmp';
+
+        /*
+         * Under the current transaction ordering, DB ledger
+         * acknowledgement occurs before installation proceeds
+         * beyond intent, and installed/rolled_back events are
+         * written only after temporary cleanup. An unjournaled
+         * tail therefore must never coexist with a temp file.
+         */
+        if (
+            file_exists($sTemporary)
+            || is_link($sTemporary)
+        ) {
+            $aResult['error'] =
+                'Runtime merge durable tail has an unexpected temporary path; automatic reconciliation refused.';
+
+            return $aResult;
+        }
+
+        if ($sEvent === 'intent') {
+            /*
+             * Crash after intent fsync but before its DB update:
+             * installRuntimeMergeManifestEntry() could not yet
+             * have proceeded to temporary creation or linking.
+             */
+            if (
+                (
+                    $aDestination['state']
+                    ?? ''
+                ) !== 'absent'
+            ) {
+                $aResult['error'] =
+                    'Unjournaled runtime merge intent no longer has an absent destination.';
+
+                return $aResult;
+            }
+        } elseif ($sEvent === 'installed') {
+            /*
+             * Crash after installed-event fsync but before its
+             * DB ledger counter update. The exact Doctor-owned
+             * inode must still be present.
+             */
+            if (
+                (
+                    $aDestination['state']
+                    ?? ''
+                ) !== 'exact'
+                || (int)(
+                    $aDestination[
+                        'actual_nlink'
+                    ]
+                    ?? -1
+                ) !== 1
+                || (int)(
+                    $aDestination[
+                        'actual_dev'
+                    ]
+                    ?? -1
+                ) !== (int)(
+                    $aEvent[
+                        'installed_dev'
+                    ]
+                    ?? -2
+                )
+                || (int)(
+                    $aDestination[
+                        'actual_ino'
+                    ]
+                    ?? -1
+                ) !== (int)(
+                    $aEvent[
+                        'installed_ino'
+                    ]
+                    ?? -2
+                )
+                || (int)(
+                    $aDestination[
+                        'actual_ctime'
+                    ]
+                    ?? -1
+                ) !== (int)(
+                    $aEvent[
+                        'installed_ctime'
+                    ]
+                    ?? -2
+                )
+            ) {
+                $aResult['error'] =
+                    'Unjournaled installed event no longer matches the Doctor-owned destination identity.';
+
+                return $aResult;
+            }
+        } elseif ($sEvent === 'rolled_back') {
+            /*
+             * Crash after rollback-event fsync but before its DB
+             * ledger counter update: destination must remain gone.
+             */
+            if (
+                (
+                    $aDestination['state']
+                    ?? ''
+                ) !== 'absent'
+            ) {
+                $aResult['error'] =
+                    'Unjournaled rollback event no longer has an absent destination.';
+
+                return $aResult;
+            }
+        }
+
+        /*
+         * The append-only event is proven durable and its live
+         * filesystem semantics are exactly what that event
+         * promises. Advance only the compact DB ledger counter.
+         */
+        $aState['merge']['ledger_events'] =
+            $iActual;
+
+        $sJson =
+            json_encode(
+                $aState,
+                JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        if ($sJson === false) {
+            $aResult['error'] =
+                'Runtime merge recovered journal state could not be encoded.';
+
+            return $aResult;
+        }
+
+        try {
+            $this->requireRepairJournalUpdate(
+                $iJournalId,
+                array(
+                    'status' =>
+                        'runtime_merging',
+
+                    'result_json' =>
+                        $sJson,
+                )
+            );
+        } catch (Throwable $e) {
+            $aResult['error'] =
+                'Runtime merge durable tail was proven but DB reconciliation failed: '
+                . $e->getMessage();
+
+            return $aResult;
+        }
+
+        /*
+         * Independently prove the ledger and DB now agree.
+         */
+        $aVerify =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (
+            empty($aVerify['ok'])
+            || (int)(
+                $aVerify['event_count']
+                ?? -1
+            ) !== $iActual
+            || (int)(
+                $aVerify['journal_event_count']
+                ?? -1
+            ) !== $iActual
+            || (int)(
+                $aVerify['unjournaled_events']
+                ?? -1
+            ) !== 0
+            || (
+                $aVerify[
+                    'entry_states'
+                ][$iIndex]
+                ?? ''
+            ) !== $sEvent
+        ) {
+            $aResult['error'] =
+                'Runtime merge durable tail DB reconciliation verification failed.';
+
+            return $aResult;
+        }
+
+        $aResult['changes_applied'] =
+            true;
+
+        /*
+         * An installed or rolled-back event can make compact
+         * copied-file progress stale if PHP died before the
+         * normal progress reconciliation step.
+         */
+        if (
+            $sEvent === 'installed'
+            || $sEvent === 'rolled_back'
+        ) {
+            $aProgress =
+                $this->reconcileRuntimeMergeProgress(
+                    $iJournalId,
+                    $sEvent === 'installed'
+                        ? 'copying'
+                        : 'rollback'
+                );
+
+            if (empty($aProgress['ok'])) {
+                $aResult['error'] =
+                    'Runtime merge ledger tail was reconciled but progress still requires recovery: '
+                    . (
+                        $aProgress['error']
+                        ?? 'unknown error'
+                    );
+
+                return $aResult;
+            }
+
+            $aResult['progress_reconciled'] =
+                true;
+
+            $aResult['copied_files'] =
+                (int)(
+                    $aProgress[
+                        'copied_files'
+                    ]
+                    ?? 0
+                );
+
+            $aResult['copied_bytes'] =
+                (int)(
+                    $aProgress[
+                        'copied_bytes'
+                    ]
+                    ?? 0
+                );
+        }
+
+        $aResult['ok'] = true;
+        $aResult['event_count'] =
+            $iActual;
+        $aResult['journal_event_count'] =
+            $iActual;
+
+        return $aResult;
+    }
+
+
+    /**
+     * Capture a read-only host-pressure snapshot for runtime merge work.
+     *
+     * This helper deliberately makes no throttling or batch-size decision.
+     * It performs no database or filesystem mutation.
+     */
+    protected function getRuntimeMergeHostPressureSnapshot()
+    {
+        $iSampledAt = time();
+
+        /*
+         * Logical CPU count.
+         */
+        $iCpuCores = 0;
+
+        if (is_readable('/proc/cpuinfo')) {
+            $sCpuInfo = @file_get_contents(
+                '/proc/cpuinfo'
+            );
+
+            if (is_string($sCpuInfo)) {
+                $iMatches = preg_match_all(
+                    '/^processor\s*:/m',
+                    $sCpuInfo,
+                    $aMatches
+                );
+
+                if ($iMatches !== false) {
+                    $iCpuCores = (int)$iMatches;
+                }
+            }
+        }
+
+        /*
+         * Never divide by zero. A missing CPU topology is reported
+         * separately while one logical CPU is used as the safe divisor.
+         */
+        $bCpuTopologyAvailable =
+            $iCpuCores > 0;
+
+        if ($iCpuCores < 1) {
+            $iCpuCores = 1;
+        }
+
+        /*
+         * Unix load averages.
+         */
+        $aLoad =
+            function_exists('sys_getloadavg')
+                ? @sys_getloadavg()
+                : false;
+
+        $bLoadAvailable =
+            is_array($aLoad)
+            && count($aLoad) >= 3;
+
+        $fLoad1 = $bLoadAvailable
+            ? (float)$aLoad[0]
+            : null;
+
+        $fLoad5 = $bLoadAvailable
+            ? (float)$aLoad[1]
+            : null;
+
+        $fLoad15 = $bLoadAvailable
+            ? (float)$aLoad[2]
+            : null;
+
+        /*
+         * Linux memory availability.
+         */
+        $iMemTotal = 0;
+        $iMemAvailable = 0;
+
+        if (is_readable('/proc/meminfo')) {
+            $aMemInfo = @file(
+                '/proc/meminfo',
+                FILE_IGNORE_NEW_LINES
+                | FILE_SKIP_EMPTY_LINES
+            );
+
+            if (is_array($aMemInfo)) {
+                foreach ($aMemInfo as $sLine) {
+                    if (
+                        preg_match(
+                            '/^MemTotal:\s+(\d+)\s+kB$/',
+                            $sLine,
+                            $aMatch
+                        )
+                    ) {
+                        $iMemTotal =
+                            (int)$aMatch[1] * 1024;
+                    }
+
+                    if (
+                        preg_match(
+                            '/^MemAvailable:\s+(\d+)\s+kB$/',
+                            $sLine,
+                            $aMatch
+                        )
+                    ) {
+                        $iMemAvailable =
+                            (int)$aMatch[1] * 1024;
+                    }
+                }
+            }
+        }
+
+        $bMemoryAvailable =
+            $iMemTotal > 0
+            && $iMemAvailable >= 0;
+
+        $fMemoryAvailablePercent =
+            $bMemoryAvailable
+                ? (
+                    $iMemAvailable
+                    / $iMemTotal
+                ) * 100
+                : null;
+
+        $fMemoryUsedPercent =
+            $fMemoryAvailablePercent !== null
+                ? 100 - $fMemoryAvailablePercent
+                : null;
+
+        /*
+         * Free space on the filesystem containing the UNA root.
+         */
+        $sDiskPath =
+            defined('BX_DIRECTORY_PATH_ROOT')
+                ? BX_DIRECTORY_PATH_ROOT
+                : getcwd();
+
+        $mDiskTotal =
+            @disk_total_space($sDiskPath);
+
+        $mDiskFree =
+            @disk_free_space($sDiskPath);
+
+        $bDiskAvailable =
+            is_numeric($mDiskTotal)
+            && is_numeric($mDiskFree)
+            && (float)$mDiskTotal > 0;
+
+        $iDiskTotal =
+            $bDiskAvailable
+                ? (int)$mDiskTotal
+                : 0;
+
+        $iDiskFree =
+            $bDiskAvailable
+                ? (int)$mDiskFree
+                : 0;
+
+        $fDiskFreePercent =
+            $bDiskAvailable
+                ? (
+                    $iDiskFree
+                    / $iDiskTotal
+                ) * 100
+                : null;
+
+        /*
+         * Linux Pressure Stall Information.
+         *
+         * Each resource can expose "some" and "full" pressure
+         * averages over 10, 60 and 300 seconds.
+         */
+        $fReadPsi =
+            static function ($sResource) {
+                $sPath =
+                    '/proc/pressure/'
+                    . $sResource;
+
+                if (!is_readable($sPath)) {
+                    return array(
+                        'available' => false,
+                        'some' => array(),
+                        'full' => array(),
+                    );
+                }
+
+                $aLines = @file(
+                    $sPath,
+                    FILE_IGNORE_NEW_LINES
+                    | FILE_SKIP_EMPTY_LINES
+                );
+
+                if (!is_array($aLines)) {
+                    return array(
+                        'available' => false,
+                        'some' => array(),
+                        'full' => array(),
+                    );
+                }
+
+                $aResult = array(
+                    'available' => true,
+                    'some' => array(),
+                    'full' => array(),
+                );
+
+                foreach ($aLines as $sLine) {
+                    if (
+                        !preg_match(
+                            '/^(some|full)\s+(.*)$/',
+                            $sLine,
+                            $aHead
+                        )
+                    ) {
+                        continue;
+                    }
+
+                    $sKind = $aHead[1];
+
+                    preg_match_all(
+                        '/(avg10|avg60|avg300|total)=([0-9.]+)/',
+                        $aHead[2],
+                        $aParts,
+                        PREG_SET_ORDER
+                    );
+
+                    foreach ($aParts as $aPart) {
+                        $aResult[
+                            $sKind
+                        ][
+                            $aPart[1]
+                        ] =
+                            $aPart[1] === 'total'
+                                ? (int)$aPart[2]
+                                : (float)$aPart[2];
+                    }
+                }
+
+                return $aResult;
+            };
+
+        return array(
+            'sampled_at' =>
+                $iSampledAt,
+
+            'cpu' => array(
+                'topology_available' =>
+                    $bCpuTopologyAvailable,
+
+                'cores' =>
+                    $iCpuCores,
+
+                'load_available' =>
+                    $bLoadAvailable,
+
+                'load_1m' =>
+                    $fLoad1,
+
+                'load_5m' =>
+                    $fLoad5,
+
+                'load_15m' =>
+                    $fLoad15,
+
+                'normalized_1m' =>
+                    $fLoad1 !== null
+                        ? $fLoad1 / $iCpuCores
+                        : null,
+
+                'normalized_5m' =>
+                    $fLoad5 !== null
+                        ? $fLoad5 / $iCpuCores
+                        : null,
+
+                'normalized_15m' =>
+                    $fLoad15 !== null
+                        ? $fLoad15 / $iCpuCores
+                        : null,
+            ),
+
+            'memory' => array(
+                'available' =>
+                    $bMemoryAvailable,
+
+                'total_bytes' =>
+                    $iMemTotal,
+
+                'available_bytes' =>
+                    $iMemAvailable,
+
+                'available_percent' =>
+                    $fMemoryAvailablePercent,
+
+                'used_percent' =>
+                    $fMemoryUsedPercent,
+            ),
+
+            'disk' => array(
+                'available' =>
+                    $bDiskAvailable,
+
+                'total_bytes' =>
+                    $iDiskTotal,
+
+                'free_bytes' =>
+                    $iDiskFree,
+
+                'free_percent' =>
+                    $fDiskFreePercent,
+            ),
+
+            'psi' => array(
+                'cpu' =>
+                    $fReadPsi('cpu'),
+
+                'io' =>
+                    $fReadPsi('io'),
+
+                'memory' =>
+                    $fReadPsi('memory'),
+            ),
+        );
+    }
+
+
+    /**
+     * Publish a sanitized maintenance heartbeat as a static JSON file.
+     *
+     * The payload intentionally contains no filesystem paths, hostnames,
+     * account names, database identifiers or runtime manifest details.
+     *
+     * This helper does not alter runtime-merge state or make governor
+     * decisions. Failure to publish telemetry must remain separate from
+     * the durable repair transaction.
+     */
+    protected function writeRuntimeMergeMaintenanceHeartbeat(
+        array $aExtra = array()
+    ) {
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'path' => '',
+            'url' =>
+                '/mud-doctor-maintenance-health.json',
+            'bytes' => 0,
+            'error' => '',
+        );
+
+        $aPressure =
+            $this->getRuntimeMergeHostPressureSnapshot();
+
+        $fNormalizedLoad =
+            isset(
+                $aPressure['cpu']['normalized_1m']
+            )
+            && $aPressure[
+                'cpu'
+            ][
+                'normalized_1m'
+            ] !== null
+                ? (float)$aPressure[
+                    'cpu'
+                ][
+                    'normalized_1m'
+                ]
+                : null;
+
+        $fMemoryUsed =
+            isset(
+                $aPressure['memory']['used_percent']
+            )
+            && $aPressure[
+                'memory'
+            ][
+                'used_percent'
+            ] !== null
+                ? (float)$aPressure[
+                    'memory'
+                ][
+                    'used_percent'
+                ]
+                : null;
+
+        $fMemoryAvailable =
+            isset(
+                $aPressure[
+                    'memory'
+                ][
+                    'available_percent'
+                ]
+            )
+            && $aPressure[
+                'memory'
+            ][
+                'available_percent'
+            ] !== null
+                ? (float)$aPressure[
+                    'memory'
+                ][
+                    'available_percent'
+                ]
+                : null;
+
+        $fDiskFree =
+            isset(
+                $aPressure['disk']['free_percent']
+            )
+            && $aPressure[
+                'disk'
+            ][
+                'free_percent'
+            ] !== null
+                ? (float)$aPressure[
+                    'disk'
+                ][
+                    'free_percent'
+                ]
+                : null;
+
+        $fPsiCpu =
+            isset(
+                $aPressure[
+                    'psi'
+                ][
+                    'cpu'
+                ][
+                    'some'
+                ][
+                    'avg10'
+                ]
+            )
+                ? (float)$aPressure[
+                    'psi'
+                ][
+                    'cpu'
+                ][
+                    'some'
+                ][
+                    'avg10'
+                ]
+                : null;
+
+        $fPsiIoSome =
+            isset(
+                $aPressure[
+                    'psi'
+                ][
+                    'io'
+                ][
+                    'some'
+                ][
+                    'avg10'
+                ]
+            )
+                ? (float)$aPressure[
+                    'psi'
+                ][
+                    'io'
+                ][
+                    'some'
+                ][
+                    'avg10'
+                ]
+                : null;
+
+        $fPsiIoFull =
+            isset(
+                $aPressure[
+                    'psi'
+                ][
+                    'io'
+                ][
+                    'full'
+                ][
+                    'avg10'
+                ]
+            )
+                ? (float)$aPressure[
+                    'psi'
+                ][
+                    'io'
+                ][
+                    'full'
+                ][
+                    'avg10'
+                ]
+                : null;
+
+        $fPsiMemory =
+            isset(
+                $aPressure[
+                    'psi'
+                ][
+                    'memory'
+                ][
+                    'some'
+                ][
+                    'avg10'
+                ]
+            )
+                ? (float)$aPressure[
+                    'psi'
+                ][
+                    'memory'
+                ][
+                    'some'
+                ][
+                    'avg10'
+                ]
+                : null;
+
+        $aPayload = array(
+            'schema' =>
+                'my_una_doctor_maintenance_health_v1',
+
+            'updated_at' =>
+                (int)(
+                    $aPressure['sampled_at']
+                    ?? time()
+                ),
+
+            'cpu_cores' =>
+                (int)(
+                    $aPressure['cpu']['cores']
+                    ?? 1
+                ),
+
+            'load_1m' =>
+                isset(
+                    $aPressure['cpu']['load_1m']
+                )
+                && $aPressure[
+                    'cpu'
+                ][
+                    'load_1m'
+                ] !== null
+                    ? round(
+                        (float)$aPressure[
+                            'cpu'
+                        ][
+                            'load_1m'
+                        ],
+                        2
+                    )
+                    : null,
+
+            'normalized_load_percent' =>
+                $fNormalizedLoad !== null
+                    ? round(
+                        $fNormalizedLoad * 100,
+                        1
+                    )
+                    : null,
+
+            'memory_used_percent' =>
+                $fMemoryUsed !== null
+                    ? round(
+                        $fMemoryUsed,
+                        1
+                    )
+                    : null,
+
+            'memory_available_percent' =>
+                $fMemoryAvailable !== null
+                    ? round(
+                        $fMemoryAvailable,
+                        1
+                    )
+                    : null,
+
+            'disk_free_percent' =>
+                $fDiskFree !== null
+                    ? round(
+                        $fDiskFree,
+                        1
+                    )
+                    : null,
+
+            'pressure' => array(
+                'cpu_some_avg10' =>
+                    $fPsiCpu !== null
+                        ? round(
+                            $fPsiCpu,
+                            2
+                        )
+                        : null,
+
+                'io_some_avg10' =>
+                    $fPsiIoSome !== null
+                        ? round(
+                            $fPsiIoSome,
+                            2
+                        )
+                        : null,
+
+                'io_full_avg10' =>
+                    $fPsiIoFull !== null
+                        ? round(
+                            $fPsiIoFull,
+                            2
+                        )
+                        : null,
+
+                'memory_some_avg10' =>
+                    $fPsiMemory !== null
+                        ? round(
+                            $fPsiMemory,
+                            2
+                        )
+                        : null,
+            ),
+
+            /*
+             * Measurement-only phase. Adaptive governor
+             * classification comes later after live testing.
+             */
+            'doctor_mode' =>
+                'monitoring',
+        );
+
+        /*
+         * Optional public-safe context.
+         */
+        if (
+            isset($aExtra['phase'])
+            && is_string($aExtra['phase'])
+        ) {
+            $sPhase =
+                preg_replace(
+                    '/[^a-z0-9_-]/i',
+                    '',
+                    $aExtra['phase']
+                );
+
+            if ($sPhase !== '') {
+                $aPayload['phase'] =
+                    substr(
+                        $sPhase,
+                        0,
+                        48
+                    );
+            }
+        }
+
+        $sJson =
+            json_encode(
+                $aPayload,
+                JSON_UNESCAPED_SLASHES
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        if (!is_string($sJson) || $sJson === '') {
+            $aResult['error'] =
+                'Maintenance heartbeat JSON could not be encoded.';
+
+            return $aResult;
+        }
+
+        $sRoot =
+            defined('BX_DIRECTORY_PATH_ROOT')
+                ? BX_DIRECTORY_PATH_ROOT
+                : getcwd() . DIRECTORY_SEPARATOR;
+
+        $sRoot =
+            rtrim(
+                $sRoot,
+                DIRECTORY_SEPARATOR
+            )
+            . DIRECTORY_SEPARATOR;
+
+        $sPath =
+            $sRoot
+            . 'mud-doctor-maintenance-health.json';
+
+        $aResult['path'] =
+            $sPath;
+
+        /*
+         * tempnam() keeps the temporary file on the same
+         * filesystem so final rename is atomic.
+         */
+        $sTemp =
+            @tempnam(
+                $sRoot,
+                'mud-health-'
+            );
+
+        if (
+            $sTemp === false
+            || $sTemp === ''
+        ) {
+            $aResult['error'] =
+                'Maintenance heartbeat temporary file could not be created.';
+
+            return $aResult;
+        }
+
+        $hFile =
+            @fopen(
+                $sTemp,
+                'wb'
+            );
+
+        if ($hFile === false) {
+            @unlink($sTemp);
+
+            $aResult['error'] =
+                'Maintenance heartbeat temporary file could not be opened.';
+
+            return $aResult;
+        }
+
+        $iLength =
+            strlen($sJson);
+
+        $iWritten =
+            @fwrite(
+                $hFile,
+                $sJson
+            );
+
+        if (
+            $iWritten === false
+            || $iWritten !== $iLength
+            || !@fflush($hFile)
+        ) {
+            @fclose($hFile);
+            @unlink($sTemp);
+
+            $aResult['error'] =
+                'Maintenance heartbeat temporary file could not be written completely.';
+
+            return $aResult;
+        }
+
+        if (function_exists('fsync')) {
+            @fsync($hFile);
+        }
+
+        @fclose($hFile);
+
+        if (!@chmod($sTemp, 0644)) {
+            @unlink($sTemp);
+
+            $aResult['error'] =
+                'Maintenance heartbeat permissions could not be applied.';
+
+            return $aResult;
+        }
+
+        if (!@rename($sTemp, $sPath)) {
+            @unlink($sTemp);
+
+            $aResult['error'] =
+                'Maintenance heartbeat could not be published atomically.';
+
+            return $aResult;
+        }
+
+        clearstatcache(
+            true,
+            $sPath
+        );
+
+        $sVerify =
+            @file_get_contents(
+                $sPath
+            );
+
+        if (
+            $sVerify === false
+            || $sVerify !== $sJson
+        ) {
+            $aResult['error'] =
+                'Published maintenance heartbeat could not be verified.';
+
+            return $aResult;
+        }
+
+        $aResult['ok'] =
+            true;
+
+        $aResult['changes_applied'] =
+            true;
+
+        $aResult['bytes'] =
+            strlen($sVerify);
+
+        $aResult['payload'] =
+            $aPayload;
+
+        return $aResult;
+    }
+
+
+    protected function prepareRuntimeMergeBatchSession(
+        $iJournalId
+    ) {
+        $iJournalId = (int)$iJournalId;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'session_id' => '',
+            'manifest_count' => 0,
+            'manifest_bytes' => 0,
+            'ledger_event_count' => 0,
+            'untouched_count' => 0,
+            'installed_count' => 0,
+            'rolled_back_count' => 0,
+            'installed_bytes' => 0,
+            'error' => '',
+        );
+
+        /*
+         * One authoritative full verification establishes the
+         * immutable manifest and append-only ledger boundary for
+         * a future optimized batch execution session.
+         */
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (empty($aLedger['ok'])) {
+            $aResult['error'] =
+                'Runtime merge ledger could not establish a batch session: '
+                . (
+                    $aLedger['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        if (
+            (int)(
+                $aLedger['unjournaled_events']
+                ?? -1
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch session refused because the durable ledger is ahead of the journal.';
+
+            return $aResult;
+        }
+
+        if (
+            (int)(
+                $aLedger['event_count']
+                ?? -1
+            ) !==
+            (int)(
+                $aLedger['journal_event_count']
+                ?? -2
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch session ledger counters are not synchronized.';
+
+            return $aResult;
+        }
+
+        $aState =
+            $aLedger['state']
+            ?? array();
+
+        $aMerge =
+            $aState['merge']
+            ?? array();
+
+        if (
+            !is_array($aState)
+            || ($aState['phase'] ?? '')
+                !== 'runtime_merging'
+            || empty($aState['runtime_moved'])
+        ) {
+            $aResult['error'] =
+                'Runtime merge journal is not in the protected merging phase.';
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aLedger['manifest']
+            ?? array();
+
+        if (empty($aManifest)) {
+            $aResult['error'] =
+                'Runtime merge batch session has no immutable manifest entries.';
+
+            return $aResult;
+        }
+
+        $aEntryStates =
+            $aLedger['entry_states']
+            ?? array();
+
+        /*
+         * Any unfinished intent requires narrow recovery before
+         * normal batch execution may begin.
+         */
+        foreach (
+            $aEntryStates
+            as $iIndex => $sState
+        ) {
+            if ($sState === 'intent') {
+                $aResult['error'] =
+                    'Runtime merge manifest entry '
+                    . (int)$iIndex
+                    . ' has an unfinished intent and requires recovery before batch execution.';
+
+                return $aResult;
+            }
+        }
+
+        $sLedgerPath =
+            (string)(
+                $aMerge['ledger_path']
+                ?? ''
+            );
+
+        $sManifestPath =
+            (string)(
+                $aMerge['manifest_path']
+                ?? ''
+            );
+
+        if (
+            $sLedgerPath === ''
+            || !is_file($sLedgerPath)
+            || is_link($sLedgerPath)
+            || $sManifestPath === ''
+            || !is_file($sManifestPath)
+            || is_link($sManifestPath)
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch session sidecar paths are unavailable or unsafe.';
+
+            return $aResult;
+        }
+
+        clearstatcache(true, $sLedgerPath);
+        clearstatcache(true, $sManifestPath);
+
+        $aLedgerBefore =
+            @lstat($sLedgerPath);
+
+        $aManifestStat =
+            @lstat($sManifestPath);
+
+        if (
+            !is_array($aLedgerBefore)
+            || !is_array($aManifestStat)
+            || (int)(
+                $aLedgerBefore['nlink']
+                ?? 0
+            ) !== 1
+            || (
+                (int)$aLedgerBefore['mode']
+                & 07777
+            ) !== 0600
+            || (int)(
+                $aManifestStat['nlink']
+                ?? 0
+            ) !== 1
+            || (
+                (int)$aManifestStat['mode']
+                & 07777
+            ) !== 0600
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch session sidecar metadata is unsafe.';
+
+            return $aResult;
+        }
+
+        /*
+         * Hash the ledger once at session preparation. This is
+         * the immutable starting boundary for optimized appends.
+         */
+        $sLedgerHash =
+            @hash_file(
+                'sha256',
+                $sLedgerPath
+            );
+
+        clearstatcache(
+            true,
+            $sLedgerPath
+        );
+
+        $aLedgerAfter =
+            @lstat($sLedgerPath);
+
+        if (
+            $sLedgerHash === false
+            || !is_array($aLedgerAfter)
+        ) {
+            $aResult['error'] =
+                'Runtime merge ledger boundary could not be hashed.';
+
+            return $aResult;
+        }
+
+        foreach (
+            array(
+                'dev',
+                'ino',
+                'size',
+                'mtime',
+                'ctime',
+                'uid',
+                'gid',
+                'nlink',
+                'mode',
+            )
+            as $sKey
+        ) {
+            if (
+                (int)(
+                    $aLedgerBefore[$sKey]
+                    ?? -1
+                )
+                !==
+                (int)(
+                    $aLedgerAfter[$sKey]
+                    ?? -2
+                )
+            ) {
+                $aResult['error'] =
+                    'Runtime merge ledger changed while its batch boundary was being established.';
+
+                return $aResult;
+            }
+        }
+
+        $iUntouched = 0;
+        $iInstalled = 0;
+        $iRolledBack = 0;
+        $iInstalledBytes = 0;
+
+        foreach (
+            $aManifest
+            as $iIndex => $aEntry
+        ) {
+            $sState =
+                (string)(
+                    $aEntryStates[$iIndex]
+                    ?? ''
+                );
+
+            if ($sState === '') {
+                $iUntouched++;
+                continue;
+            }
+
+            if ($sState === 'rolled_back') {
+                $iRolledBack++;
+                continue;
+            }
+
+            if ($sState === 'installed') {
+                $iInstalled++;
+
+                $iInstalledBytes +=
+                    (int)(
+                        $aEntry['size']
+                        ?? 0
+                    );
+
+                continue;
+            }
+
+            $aResult['error'] =
+                'Runtime merge batch session encountered unsupported entry state '
+                . $sState
+                . '.';
+
+            return $aResult;
+        }
+
+        /*
+         * Derive active installed-file ownership once from the
+         * already fully verified append-only ledger.
+         */
+        $aLatestInstalledEvents =
+            array();
+
+        foreach (
+            ($aLedger['events'] ?? array())
+            as $aEvent
+        ) {
+            if (!is_array($aEvent)) {
+                $aResult['error'] =
+                    'Runtime merge batch session encountered a malformed verified ledger event.';
+
+                return $aResult;
+            }
+
+            $sEvent =
+                (string)(
+                    $aEvent['event']
+                    ?? ''
+                );
+
+            $iEventIndex =
+                (int)(
+                    $aEvent['manifest_index']
+                    ?? -1
+                );
+
+            if (
+                $iEventIndex < 0
+                || !isset($aManifest[$iEventIndex])
+            ) {
+                $aResult['error'] =
+                    'Runtime merge batch session encountered a ledger event with an invalid manifest index.';
+
+                return $aResult;
+            }
+
+            if (
+                $sEvent === 'intent'
+                || $sEvent === 'rolled_back'
+            ) {
+                unset(
+                    $aLatestInstalledEvents[
+                        $iEventIndex
+                    ]
+                );
+
+                continue;
+            }
+
+            if ($sEvent !== 'installed')
+                continue;
+
+            if (
+                (int)(
+                    $aEvent['sequence']
+                    ?? 0
+                ) <= 0
+                || (int)(
+                    $aEvent['installed_dev']
+                    ?? -1
+                ) < 0
+                || (int)(
+                    $aEvent['installed_ino']
+                    ?? -1
+                ) <= 0
+                || (int)(
+                    $aEvent['installed_ctime']
+                    ?? -1
+                ) <= 0
+            ) {
+                $aResult['error'] =
+                    'Runtime merge batch session encountered an installed event with incomplete ownership identity.';
+
+                return $aResult;
+            }
+
+            $aLatestInstalledEvents[
+                $iEventIndex
+            ] =
+                $aEvent;
+        }
+
+        /*
+         * Derived ownership must agree exactly with the final
+         * verified ledger state.
+         */
+        foreach (
+            $aEntryStates
+            as $iIndex => $sState
+        ) {
+            $bHasOwnership =
+                isset(
+                    $aLatestInstalledEvents[
+                        $iIndex
+                    ]
+                );
+
+            if (
+                $sState === 'installed'
+                && !$bHasOwnership
+            ) {
+                $aResult['error'] =
+                    'Runtime merge batch session could not derive installed ownership for manifest entry '
+                    . (int)$iIndex
+                    . '.';
+
+                return $aResult;
+            }
+
+            if (
+                $sState !== 'installed'
+                && $bHasOwnership
+            ) {
+                $aResult['error'] =
+                    'Runtime merge batch session derived stale installed ownership for manifest entry '
+                    . (int)$iIndex
+                    . '.';
+
+                return $aResult;
+            }
+        }
+
+        if (
+            count($aLatestInstalledEvents)
+            !== $iInstalled
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch session ownership count does not match installed entry count.';
+
+            return $aResult;
+        }
+
+        $aIdentity = array(
+            'schema' =>
+                'my_una_doctor_runtime_merge_batch_session_v1',
+
+            'journal_id' =>
+                $iJournalId,
+
+            'merge_plan_id' =>
+                (string)(
+                    $aMerge['merge_plan_id']
+                    ?? ''
+                ),
+
+            'execution_manifest_id' =>
+                (string)(
+                    $aMerge[
+                        'execution_manifest_id'
+                    ]
+                    ?? ''
+                ),
+
+            'manifest_file_sha256' =>
+                (string)(
+                    $aMerge[
+                        'manifest_file_sha256'
+                    ]
+                    ?? ''
+                ),
+
+            'ledger_id' =>
+                (string)(
+                    $aMerge['ledger_id']
+                    ?? ''
+                ),
+
+            'ledger_event_count' =>
+                (int)(
+                    $aLedger['event_count']
+                    ?? 0
+                ),
+
+            'ledger_file_sha256' =>
+                strtolower($sLedgerHash),
+
+            'ledger_file_bytes' =>
+                (int)(
+                    $aLedgerAfter['size']
+                    ?? 0
+                ),
+
+            'ledger_dev' =>
+                (int)(
+                    $aLedgerAfter['dev']
+                    ?? -1
+                ),
+
+            'ledger_ino' =>
+                (int)(
+                    $aLedgerAfter['ino']
+                    ?? -1
+                ),
+
+            'manifest_count' =>
+                count($aManifest),
+
+            'manifest_bytes' =>
+                (int)(
+                    $aMerge['manifest_bytes']
+                    ?? 0
+                ),
+        );
+
+        $sIdentityJson =
+            json_encode(
+                $aIdentity,
+                JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        if ($sIdentityJson === false) {
+            $aResult['error'] =
+                'Runtime merge batch session identity could not be encoded.';
+
+            return $aResult;
+        }
+
+        $aResult['ok'] = true;
+        $aResult['session_id'] =
+            hash(
+                'sha256',
+                $sIdentityJson
+            );
+        $aResult['identity'] =
+            $aIdentity;
+        $aResult['manifest'] =
+            $aManifest;
+        $aResult['entry_states'] =
+            $aEntryStates;
+        $aResult['latest_installed_events'] =
+            $aLatestInstalledEvents;
+        $aResult['state'] =
+            $aState;
+        $aResult['ledger_path'] =
+            $sLedgerPath;
+        $aResult['manifest_path'] =
+            $sManifestPath;
+        $aResult['manifest_count'] =
+            count($aManifest);
+        $aResult['manifest_bytes'] =
+            (int)(
+                $aMerge['manifest_bytes']
+                ?? 0
+            );
+        $aResult['ledger_event_count'] =
+            (int)(
+                $aLedger['event_count']
+                ?? 0
+            );
+        $aResult['ledger_file_bytes'] =
+            (int)(
+                $aLedgerAfter['size']
+                ?? 0
+            );
+        $aResult['ledger_file_sha256'] =
+            strtolower($sLedgerHash);
+        $aResult['untouched_count'] =
+            $iUntouched;
+        $aResult['installed_count'] =
+            $iInstalled;
+        $aResult['rolled_back_count'] =
+            $iRolledBack;
+        $aResult['installed_bytes'] =
+            $iInstalledBytes;
+
+        return $aResult;
+    }
+
+
+    /**
+     * Execute one guarded, bounded runtime-merge batch.
+     *
+     * Public mutation gateway for Studio. The transactional installer
+     * remains protected and inaccessible directly from the UI.
+     */
+    /**
+     * Roll back one proven Doctor-installed runtime-merge entry.
+     *
+     * Public mutation gateway for Studio. The filesystem rollback
+     * implementation remains protected and inaccessible directly
+     * from the UI.
+     */
+    /**
+     * Read one runtime-merge manifest entry state.
+     *
+     * Read-only Studio helper. No ledger reconciliation, filesystem
+     * mutation or journal mutation is permitted here.
+     */
+    public function getRuntimeMergeEntryState(
+        $iJournalId,
+        $iManifestIndex = 0
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iManifestIndex = (int)$iManifestIndex;
+
+        $aResult = array(
+            'ok' => false,
+            'journal_id' => $iJournalId,
+            'manifest_index' => $iManifestIndex,
+            'journal_status' => '',
+            'phase' => '',
+            'runtime_moved' => false,
+            'entry_state' => '',
+            'event_count' => 0,
+            'journal_event_count' => 0,
+            'unjournaled_events' => 0,
+            'copied_files' => 0,
+            'copied_bytes' => 0,
+            'runtime_files_changed' => false,
+            'error' => '',
+        );
+
+        if ($iJournalId <= 0 || $iManifestIndex < 0) {
+            $aResult['error'] =
+                'Runtime merge entry-state parameters are invalid.';
+
+            return $aResult;
+        }
+
+        $aJournal =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        if (empty($aJournal)) {
+            $aResult['error'] =
+                'Repair journal was not found.';
+
+            return $aResult;
+        }
+
+        $aState =
+            json_decode(
+                (string)(
+                    $aJournal['result_json']
+                    ?? ''
+                ),
+                true
+            );
+
+        if (!is_array($aState)) {
+            $aResult['error'] =
+                'Repair journal state could not be decoded.';
+
+            return $aResult;
+        }
+
+        $aResult['journal_status'] =
+            (string)(
+                $aJournal['status']
+                ?? ''
+            );
+
+        $aResult['phase'] =
+            (string)(
+                $aState['phase']
+                ?? ''
+            );
+
+        $aResult['runtime_moved'] =
+            !empty(
+                $aState['runtime_moved']
+            );
+
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (empty($aLedger['ok'])) {
+            $aResult['error'] =
+                'Runtime merge ledger verification failed: '
+                . (
+                    $aLedger['error']
+                    ?? 'unknown ledger error'
+                );
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aLedger['manifest']
+            ?? array();
+
+        if (
+            !isset($aManifest[$iManifestIndex])
+            || !is_array(
+                $aManifest[$iManifestIndex]
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge manifest entry was not found.';
+
+            return $aResult;
+        }
+
+        $aResult['entry_state'] =
+            (string)(
+                $aLedger[
+                    'entry_states'
+                ][$iManifestIndex]
+                ?? ''
+            );
+
+        $aResult['event_count'] =
+            (int)(
+                $aLedger['event_count']
+                ?? 0
+            );
+
+        $aResult['journal_event_count'] =
+            (int)(
+                $aLedger['journal_event_count']
+                ?? 0
+            );
+
+        $aResult['unjournaled_events'] =
+            (int)(
+                $aLedger['unjournaled_events']
+                ?? 0
+            );
+
+        $aMerge =
+            $aState['merge']
+            ?? array();
+
+        $aProgress =
+            $aMerge['progress']
+            ?? array();
+
+        $aResult['copied_files'] =
+            (int)(
+                $aProgress['copied_files']
+                ?? 0
+            );
+
+        $aResult['copied_bytes'] =
+            (int)(
+                $aProgress['copied_bytes']
+                ?? 0
+            );
+
+        $aResult['runtime_files_changed'] =
+            !empty(
+                $aProgress['runtime_files_changed']
+            );
+
+        $aResult['ok'] = true;
+
+        return $aResult;
+    }
+
+
+    /**
+     * Read and prove one bounded runtime-merge manifest range.
+     *
+     * Read-only Studio helper. No ledger reconciliation, journal
+     * mutation or filesystem mutation is permitted here.
+     */
+    public function getRuntimeMergeRangeState(
+        $iJournalId,
+        $iStartIndex = 0,
+        $iFileCount = 5
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iStartIndex = (int)$iStartIndex;
+        $iFileCount = (int)$iFileCount;
+
+        $aResult = array(
+            'ok' => false,
+            'journal_id' => $iJournalId,
+            'start_index' => $iStartIndex,
+            'file_count' => $iFileCount,
+            'end_index_exclusive' => $iStartIndex,
+            'journal_status' => '',
+            'phase' => '',
+            'runtime_moved' => false,
+            'event_count' => 0,
+            'journal_event_count' => 0,
+            'unjournaled_events' => 0,
+            'never_installed_count' => 0,
+            'rolled_back_count' => 0,
+            'installed_count' => 0,
+            'intent_count' => 0,
+            'passive_count' => 0,
+            'installed_bytes' => 0,
+            'all_passive' => false,
+            'all_installed' => false,
+            'install_ready' => false,
+            'rollback_ready' => false,
+            'recovery_required' => false,
+            'entries' => array(),
+            'error' => '',
+        );
+
+        /*
+         * Read-only range may inspect at most the currently proven
+         * optimized installer ceiling.
+         */
+        if (
+            $iJournalId <= 0
+            || $iStartIndex < 0
+            || $iFileCount < 1
+            || $iFileCount > 25
+        ) {
+            $aResult['error'] =
+                'Runtime merge range-state parameters are outside the guarded limits.';
+
+            return $aResult;
+        }
+
+        $aJournal =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        if (empty($aJournal)) {
+            $aResult['error'] =
+                'Repair journal was not found.';
+
+            return $aResult;
+        }
+
+        $aState =
+            json_decode(
+                (string)(
+                    $aJournal['result_json']
+                    ?? ''
+                ),
+                true
+            );
+
+        if (!is_array($aState)) {
+            $aResult['error'] =
+                'Repair journal state could not be decoded.';
+
+            return $aResult;
+        }
+
+        $aResult['journal_status'] =
+            (string)(
+                $aJournal['status']
+                ?? ''
+            );
+
+        $aResult['phase'] =
+            (string)(
+                $aState['phase']
+                ?? ''
+            );
+
+        $aResult['runtime_moved'] =
+            !empty(
+                $aState['runtime_moved']
+            );
+
+        if (
+            $aResult['journal_status'] !== 'runtime_merging'
+            || $aResult['phase'] !== 'runtime_merging'
+            || !$aResult['runtime_moved']
+        ) {
+            $aResult['error'] =
+                'Runtime merge range-state inspection requires an exact runtime_merging journal with protected runtime still moved.';
+
+            return $aResult;
+        }
+
+        /*
+         * The durable ledger is authoritative.
+         */
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (empty($aLedger['ok'])) {
+            $aResult['error'] =
+                'Runtime merge range-state ledger verification failed: '
+                . (
+                    $aLedger['error']
+                    ?? 'unknown ledger error'
+                );
+
+            return $aResult;
+        }
+
+        $aResult['event_count'] =
+            (int)(
+                $aLedger['event_count']
+                ?? 0
+            );
+
+        $aResult['journal_event_count'] =
+            (int)(
+                $aLedger['journal_event_count']
+                ?? 0
+            );
+
+        $aResult['unjournaled_events'] =
+            (int)(
+                $aLedger['unjournaled_events']
+                ?? -1
+            );
+
+        if (
+            $aResult['unjournaled_events'] !== 0
+            || $aResult['event_count']
+                !== $aResult['journal_event_count']
+        ) {
+            $aResult['error'] =
+                'Runtime merge range-state inspection refused because the durable ledger and journal are not synchronized.';
+
+            return $aResult;
+        }
+
+        $aManifest =
+            $aLedger['manifest']
+            ?? array();
+
+        $iManifestCount =
+            count($aManifest);
+
+        if (
+            $iStartIndex >= $iManifestCount
+            || ($iStartIndex + $iFileCount) > $iManifestCount
+        ) {
+            $aResult['error'] =
+                'Runtime merge range-state request is outside the execution manifest.';
+
+            return $aResult;
+        }
+
+        $iEndExclusive =
+            $iStartIndex + $iFileCount;
+
+        $aResult['end_index_exclusive'] =
+            $iEndExclusive;
+
+        /*
+         * Prove both the ledger state and the corresponding live
+         * filesystem state for every requested entry.
+         */
+        for (
+            $iIndex = $iStartIndex;
+            $iIndex < $iEndExclusive;
+            $iIndex++
+        ) {
+            $aEntry =
+                $aManifest[$iIndex];
+
+            $sEntryState =
+                (string)(
+                    $aLedger[
+                        'entry_states'
+                    ][$iIndex]
+                    ?? ''
+                );
+
+            if (
+                $sEntryState !== ''
+                && $sEntryState !== 'rolled_back'
+                && $sEntryState !== 'installed'
+                && $sEntryState !== 'intent'
+            ) {
+                $aResult['error'] =
+                    'Runtime merge range-state encountered unsupported ledger state '
+                    . $sEntryState
+                    . ' at manifest entry '
+                    . $iIndex
+                    . '.';
+
+                return $aResult;
+            }
+
+            $aDestination =
+                $this->inspectRuntimeMergeDestinationEntry(
+                    $iJournalId,
+                    $iIndex
+                );
+
+            if (empty($aDestination['ok'])) {
+                $aResult['error'] =
+                    'Runtime merge range-state could not inspect destination for manifest entry '
+                    . $iIndex
+                    . ': '
+                    . (
+                        $aDestination['error']
+                        ?? 'unknown destination error'
+                    );
+
+                return $aResult;
+            }
+
+            $sDestinationState =
+                (string)(
+                    $aDestination['state']
+                    ?? ''
+                );
+
+            /*
+             * Passive ledger states require physical absence.
+             */
+            if (
+                (
+                    $sEntryState === ''
+                    || $sEntryState === 'rolled_back'
+                )
+                && $sDestinationState !== 'absent'
+            ) {
+                $aResult['error'] =
+                    'Passive runtime merge entry '
+                    . $iIndex
+                    . ' has a non-absent destination.';
+
+                return $aResult;
+            }
+
+            /*
+             * Installed state requires an exact manifest destination.
+             */
+            if (
+                $sEntryState === 'installed'
+                && (
+                    $sDestinationState !== 'exact'
+                    || empty(
+                        $aDestination[
+                            'matches_manifest'
+                        ]
+                    )
+                )
+            ) {
+                $aResult['error'] =
+                    'Installed runtime merge entry '
+                    . $iIndex
+                    . ' does not have an exact manifest destination.';
+
+                return $aResult;
+            }
+
+            /*
+             * INTENT may legitimately correspond to different crash
+             * positions. Report it as recovery-only rather than
+             * trying to reinterpret or repair it here.
+             */
+            if ($sEntryState === '') {
+                $aResult['never_installed_count']++;
+                $aResult['passive_count']++;
+            } elseif ($sEntryState === 'rolled_back') {
+                $aResult['rolled_back_count']++;
+                $aResult['passive_count']++;
+            } elseif ($sEntryState === 'installed') {
+                $aResult['installed_count']++;
+
+                $aResult['installed_bytes'] +=
+                    (int)(
+                        $aEntry['size']
+                        ?? 0
+                    );
+            } elseif ($sEntryState === 'intent') {
+                $aResult['intent_count']++;
+                $aResult['recovery_required'] =
+                    true;
+            }
+
+            $aResult['entries'][] =
+                array(
+                    'manifest_index' => $iIndex,
+                    'file' =>
+                        (string)(
+                            $aEntry['file']
+                            ?? ''
+                        ),
+                    'relative_path' =>
+                        (string)(
+                            $aEntry['relative_path']
+                            ?? ''
+                        ),
+                    'size' =>
+                        (int)(
+                            $aEntry['size']
+                            ?? 0
+                        ),
+                    'entry_state' =>
+                        $sEntryState,
+                    'destination_state' =>
+                        $sDestinationState,
+                    'matches_manifest' =>
+                        !empty(
+                            $aDestination[
+                                'matches_manifest'
+                            ]
+                        ),
+                );
+        }
+
+        $aResult['all_passive'] =
+            $aResult['passive_count']
+                === $iFileCount;
+
+        $aResult['all_installed'] =
+            $aResult['installed_count']
+                === $iFileCount;
+
+        /*
+         * Install is offered only when every requested entry is
+         * passive and physically absent.
+         */
+        $aResult['install_ready'] =
+            $aResult['all_passive']
+            && !$aResult['recovery_required'];
+
+        /*
+         * Bounded rollback may contain a mixture of installed and
+         * passive entries, but no unresolved intent.
+         */
+        $aResult['rollback_ready'] =
+            $aResult['installed_count'] > 0
+            && !$aResult['recovery_required'];
+
+        $aResult['ok'] = true;
+
+        return $aResult;
+    }
+
+
+    public function rollbackRuntimeMergeEntry(
+        $iJournalId,
+        $iManifestIndex = 0
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iManifestIndex = (int)$iManifestIndex;
+
+        $aResult = array(
+            'ok' => false,
+            'rolled_back' => false,
+            'changes_applied' => false,
+            'runtime_files_changed' => false,
+            'journal_id' => $iJournalId,
+            'manifest_index' => $iManifestIndex,
+            'guarded_gateway' => true,
+            'operation' => 'rollback',
+            'starting_ledger_events' => 0,
+            'final_ledger_events' => 0,
+            'copied_files' => 0,
+            'copied_bytes' => 0,
+            'error' => '',
+        );
+
+        /*
+         * Match Doctor's existing mutation policy:
+         * authenticated web POST only.
+         */
+        if (
+            PHP_SAPI === 'cli'
+            || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST'
+        ) {
+            $aResult['error'] =
+                'Runtime merge rollback is allowed only from an authenticated web POST.';
+
+            return $aResult;
+        }
+
+        if (!isAdmin()) {
+            $aResult['error'] =
+                'Administrator authorization is required.';
+
+            return $aResult;
+        }
+
+        if (
+            $iJournalId <= 0
+            || $iManifestIndex < 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge rollback parameters are outside the guarded limits.';
+
+            return $aResult;
+        }
+
+        /*
+         * Re-prove the authoritative repair state independently
+         * before allowing the protected rollback helper to mutate.
+         */
+        $aJournal =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`, `error_text`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        if (empty($aJournal)) {
+            $aResult['error'] =
+                'Repair journal was not found.';
+
+            return $aResult;
+        }
+
+        $aState =
+            json_decode(
+                (string)(
+                    $aJournal['result_json']
+                    ?? ''
+                ),
+                true
+            );
+
+        if (
+            (string)(
+                $aJournal['status']
+                ?? ''
+            ) !== 'runtime_merging'
+            || !is_array($aState)
+            || (string)(
+                $aState['phase']
+                ?? ''
+            ) !== 'runtime_merging'
+            || empty(
+                $aState['runtime_moved']
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge rollback requires an exact runtime_merging journal with protected runtime still moved.';
+
+            return $aResult;
+        }
+
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (empty($aLedger['ok'])) {
+            $aResult['error'] =
+                'Runtime merge rollback ledger verification failed: '
+                . (
+                    $aLedger['error']
+                    ?? 'unknown ledger error'
+                );
+
+            return $aResult;
+        }
+
+        if (
+            (int)(
+                $aLedger['unjournaled_events']
+                ?? -1
+            ) !== 0
+            || (int)(
+                $aLedger['event_count']
+                ?? -1
+            ) !==
+            (int)(
+                $aLedger['journal_event_count']
+                ?? -2
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge rollback refused because the durable ledger and journal are not synchronized.';
+
+            return $aResult;
+        }
+
+        /*
+         * The controlled Studio rollback path does not perform
+         * intent recovery. Any unresolved intent remains a
+         * separate explicit recovery condition.
+         */
+        foreach (
+            (
+                $aLedger['entry_states']
+                ?? array()
+            )
+            as $iIndex => $sState
+        ) {
+            if ((string)$sState === 'intent') {
+                $aResult['error'] =
+                    'Runtime merge rollback refused because manifest entry '
+                    . (int)$iIndex
+                    . ' has an unresolved durable intent.';
+
+                return $aResult;
+            }
+        }
+
+        $sTargetState =
+            (string)(
+                $aLedger[
+                    'entry_states'
+                ][$iManifestIndex]
+                ?? ''
+            );
+
+        if ($sTargetState !== 'installed') {
+            $aResult['error'] =
+                'Controlled runtime merge rollback requires the requested manifest entry to be in installed state.';
+
+            return $aResult;
+        }
+
+        $iStartingEvents =
+            (int)(
+                $aLedger['event_count']
+                ?? 0
+            );
+
+        $aResult['starting_ledger_events'] =
+            $iStartingEvents;
+
+        /*
+         * Delegate deletion only after every public gateway guard
+         * has independently passed. The protected helper proves
+         * exact manifest bytes plus Doctor-recorded filesystem
+         * ownership before unlinking.
+         */
+        $aRollback =
+            $this->rollbackRuntimeMergeManifestEntry(
+                $iJournalId,
+                $iManifestIndex
+            );
+
+        if (!is_array($aRollback)) {
+            $aResult['error'] =
+                'Runtime merge rollback executor returned an invalid result.';
+
+            return $aResult;
+        }
+
+        $aResult['changes_applied'] =
+            !empty(
+                $aRollback['changes_applied']
+            );
+
+        $aResult['runtime_files_changed'] =
+            !empty(
+                $aRollback['runtime_files_changed']
+            );
+
+        $aResult['rolled_back'] =
+            !empty(
+                $aRollback['rolled_back']
+            );
+
+        $aResult['copied_files'] =
+            (int)(
+                $aRollback['copied_files']
+                ?? 0
+            );
+
+        $aResult['copied_bytes'] =
+            (int)(
+                $aRollback['copied_bytes']
+                ?? 0
+            );
+
+        if (empty($aRollback['ok'])) {
+            $aResult['error'] =
+                'Runtime merge rollback did not complete: '
+                . (
+                    $aRollback['error']
+                    ?? 'unknown rollback error'
+                );
+
+            return $aResult;
+        }
+
+        /*
+         * Independent post-mutation proof.
+         */
+        $aFinal =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (
+            empty($aFinal['ok'])
+            || (int)(
+                $aFinal['unjournaled_events']
+                ?? -1
+            ) !== 0
+            || (int)(
+                $aFinal['event_count']
+                ?? -1
+            ) !==
+            (int)(
+                $aFinal['journal_event_count']
+                ?? -2
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge rollback completed but final ledger verification failed.';
+
+            return $aResult;
+        }
+
+        $iFinalEvents =
+            (int)(
+                $aFinal['event_count']
+                ?? -1
+            );
+
+        $aResult['final_ledger_events'] =
+            $iFinalEvents;
+
+        if (
+            (
+                $aFinal[
+                    'entry_states'
+                ][$iManifestIndex]
+                ?? ''
+            ) !== 'rolled_back'
+            || $iFinalEvents !== ($iStartingEvents + 1)
+        ) {
+            $aResult['error'] =
+                'Runtime merge rollback final state does not match the expected single durable rollback event.';
+
+            return $aResult;
+        }
+
+        $aResult['ok'] = true;
+        $aResult['rolled_back'] = true;
+
+        return $aResult;
+    }
+
+
+    /**
+     * Roll back one bounded range of proven runtime-merge entries.
+     *
+     * Public mutation gateway for Studio. The lower-level bounded
+     * rollback implementation remains protected.
+     */
+    public function rollbackRuntimeMergeBatchEntries(
+        $iJournalId,
+        $iStartIndex = 0,
+        $iFileCount = 10
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iStartIndex = (int)$iStartIndex;
+        $iFileCount = (int)$iFileCount;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'runtime_files_changed' => false,
+            'journal_id' => $iJournalId,
+            'start_index' => $iStartIndex,
+            'file_count' => $iFileCount,
+            'end_index_exclusive' => $iStartIndex,
+            'guarded_gateway' => true,
+            'operation' => 'batch_rollback',
+            'starting_ledger_events' => 0,
+            'final_ledger_events' => 0,
+            'rolled_back_count' => 0,
+            'rolled_back_indexes' => array(),
+            'skipped_indexes' => array(),
+            'copied_files' => 0,
+            'copied_bytes' => 0,
+            'error_index' => -1,
+            'error' => '',
+        );
+
+        /*
+         * Match Doctor's mutation policy:
+         * authenticated administrator web POST only.
+         */
+        if (
+            PHP_SAPI === 'cli'
+            || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST'
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch rollback is allowed only from an authenticated web POST.';
+
+            return $aResult;
+        }
+
+        if (!isAdmin()) {
+            $aResult['error'] =
+                'Administrator authorization is required.';
+
+            return $aResult;
+        }
+
+        /*
+         * Keep the public ceiling identical to the currently proven
+         * protected rollback ceiling.
+         */
+        if (
+            $iJournalId <= 0
+            || $iStartIndex < 0
+            || $iFileCount < 1
+            || $iFileCount > 10
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch rollback parameters are outside the guarded limits.';
+
+            return $aResult;
+        }
+
+        /*
+         * Independently prove the authoritative journal state.
+         */
+        $aJournal =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        if (empty($aJournal)) {
+            $aResult['error'] =
+                'Repair journal was not found.';
+
+            return $aResult;
+        }
+
+        $aState =
+            json_decode(
+                (string)(
+                    $aJournal['result_json']
+                    ?? ''
+                ),
+                true
+            );
+
+        if (
+            (string)(
+                $aJournal['status']
+                ?? ''
+            ) !== 'runtime_merging'
+            || !is_array($aState)
+            || (string)(
+                $aState['phase']
+                ?? ''
+            ) !== 'runtime_merging'
+            || empty(
+                $aState['runtime_moved']
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch rollback requires an exact runtime_merging journal with protected runtime still moved.';
+
+            return $aResult;
+        }
+
+        /*
+         * Durable ledger must already be completely synchronized.
+         * Recovery is deliberately separate.
+         */
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (empty($aLedger['ok'])) {
+            $aResult['error'] =
+                'Runtime merge batch rollback ledger verification failed: '
+                . (
+                    $aLedger['error']
+                    ?? 'unknown ledger error'
+                );
+
+            return $aResult;
+        }
+
+        if (
+            (int)(
+                $aLedger['unjournaled_events']
+                ?? -1
+            ) !== 0
+            || (int)(
+                $aLedger['event_count']
+                ?? -1
+            ) !==
+            (int)(
+                $aLedger['journal_event_count']
+                ?? -2
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch rollback refused because the durable ledger and journal are not synchronized.';
+
+            return $aResult;
+        }
+
+        /*
+         * Normal bounded rollback does not consume unresolved intent.
+         * Any intent anywhere in the manifest locks this gateway.
+         */
+        foreach (
+            (
+                $aLedger['entry_states']
+                ?? array()
+            )
+            as $iIndex => $sState
+        ) {
+            if ((string)$sState === 'intent') {
+                $aResult['error'] =
+                    'Runtime merge batch rollback refused because manifest entry '
+                    . (int)$iIndex
+                    . ' has an unresolved durable intent.';
+
+                return $aResult;
+            }
+        }
+
+        $aManifest =
+            $aLedger['manifest']
+            ?? array();
+
+        $iManifestCount =
+            count($aManifest);
+
+        if (
+            $iStartIndex >= $iManifestCount
+            || ($iStartIndex + $iFileCount) > $iManifestCount
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch rollback range is outside the execution manifest.';
+
+            return $aResult;
+        }
+
+        $iEndExclusive =
+            $iStartIndex + $iFileCount;
+
+        $aResult['end_index_exclusive'] =
+            $iEndExclusive;
+
+        /*
+         * Permit only known passive states plus installed.
+         * At least one entry must actually require rollback so a
+         * repeated submission cannot masquerade as a successful
+         * mutation.
+         */
+        $iInstalledBefore = 0;
+
+        for (
+            $iIndex = $iStartIndex;
+            $iIndex < $iEndExclusive;
+            $iIndex++
+        ) {
+            $sEntryState =
+                (string)(
+                    $aLedger[
+                        'entry_states'
+                    ][$iIndex]
+                    ?? ''
+                );
+
+            if (
+                $sEntryState !== ''
+                && $sEntryState !== 'rolled_back'
+                && $sEntryState !== 'installed'
+            ) {
+                $aResult['error_index'] =
+                    $iIndex;
+
+                $aResult['error'] =
+                    'Runtime merge batch rollback encountered unsupported state '
+                    . $sEntryState
+                    . ' at manifest entry '
+                    . $iIndex
+                    . '.';
+
+                return $aResult;
+            }
+
+            if ($sEntryState === 'installed') {
+                $iInstalledBefore++;
+            }
+        }
+
+        if ($iInstalledBefore < 1) {
+            $aResult['error'] =
+                'Runtime merge batch rollback requires at least one installed entry in the requested range.';
+
+            return $aResult;
+        }
+
+        $iStartingEvents =
+            (int)(
+                $aLedger['event_count']
+                ?? 0
+            );
+
+        $aResult['starting_ledger_events'] =
+            $iStartingEvents;
+
+        /*
+         * Delegate only after all public guards pass.
+         *
+         * The protected helper rolls the requested range backward,
+         * re-verifies the ledger for each entry and delegates actual
+         * deletion to the identity-proving single-entry rollback.
+         */
+        $aRollback =
+            $this->rollbackRuntimeMergeBatch(
+                $iJournalId,
+                $iStartIndex,
+                $iFileCount
+            );
+
+        if (!is_array($aRollback)) {
+            $aResult['error'] =
+                'Runtime merge batch rollback executor returned an invalid result.';
+
+            return $aResult;
+        }
+
+        $aResult['changes_applied'] =
+            !empty(
+                $aRollback['changes_applied']
+            );
+
+        $aResult['rolled_back_count'] =
+            (int)(
+                $aRollback['rolled_back_count']
+                ?? 0
+            );
+
+        $aResult['rolled_back_indexes'] =
+            is_array(
+                $aRollback['rolled_back_indexes']
+                ?? null
+            )
+                ? $aRollback['rolled_back_indexes']
+                : array();
+
+        $aResult['skipped_indexes'] =
+            is_array(
+                $aRollback['skipped_indexes']
+                ?? null
+            )
+                ? $aRollback['skipped_indexes']
+                : array();
+
+        $aResult['error_index'] =
+            (int)(
+                $aRollback['error_index']
+                ?? -1
+            );
+
+        if (empty($aRollback['ok'])) {
+            $aResult['error'] =
+                'Runtime merge batch rollback did not complete: '
+                . (
+                    $aRollback['error']
+                    ?? 'unknown rollback error'
+                );
+
+            return $aResult;
+        }
+
+        /*
+         * Independent authoritative post-mutation proof.
+         */
+        $aFinal =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (
+            empty($aFinal['ok'])
+            || (int)(
+                $aFinal['unjournaled_events']
+                ?? -1
+            ) !== 0
+            || (int)(
+                $aFinal['event_count']
+                ?? -1
+            ) !==
+            (int)(
+                $aFinal['journal_event_count']
+                ?? -2
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch rollback completed but final ledger verification failed.';
+
+            return $aResult;
+        }
+
+        $iFinalEvents =
+            (int)(
+                $aFinal['event_count']
+                ?? -1
+            );
+
+        $aResult['final_ledger_events'] =
+            $iFinalEvents;
+
+        /*
+         * Every installed entry in the range must now be passive,
+         * and each actual installed rollback contributes exactly one
+         * durable rolled_back event.
+         */
+        for (
+            $iIndex = $iStartIndex;
+            $iIndex < $iEndExclusive;
+            $iIndex++
+        ) {
+            $sFinalState =
+                (string)(
+                    $aFinal[
+                        'entry_states'
+                    ][$iIndex]
+                    ?? ''
+                );
+
+            if (
+                $sFinalState === 'intent'
+                || $sFinalState === 'installed'
+            ) {
+                $aResult['error_index'] =
+                    $iIndex;
+
+                $aResult['error'] =
+                    'Runtime merge batch rollback final verification left manifest entry '
+                    . $iIndex
+                    . ' in active state '
+                    . $sFinalState
+                    . '.';
+
+                return $aResult;
+            }
+        }
+
+        if (
+            $aResult['rolled_back_count']
+                !== $iInstalledBefore
+            || $iFinalEvents
+                !== (
+                    $iStartingEvents
+                    + $aResult['rolled_back_count']
+                )
+        ) {
+            $aResult['error'] =
+                'Runtime merge batch rollback durable event count does not match the proven installed-entry count.';
+
+            return $aResult;
+        }
+
+        $aFinalState =
+            $aFinal['state']
+            ?? array();
+
+        $aProgress =
+            $aFinalState[
+                'merge'
+            ]['progress']
+            ?? array();
+
+        $aResult['copied_files'] =
+            (int)(
+                $aProgress['copied_files']
+                ?? 0
+            );
+
+        $aResult['copied_bytes'] =
+            (int)(
+                $aProgress['copied_bytes']
+                ?? 0
+            );
+
+        $aResult['runtime_files_changed'] =
+            !empty(
+                $aProgress[
+                    'runtime_files_changed'
+                ]
+            );
+
+        $aResult['ok'] = true;
+
+        return $aResult;
+    }
+
+
+    public function rollbackRuntimeMergeWorkCycle(
+        $iJournalId,
+        $iStartIndex,
+        $iFileCount = 250,
+        $iExpectedLedgerEvents = null
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iStartIndex = (int)$iStartIndex;
+        $iFileCount = (int)$iFileCount;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'start_index' => $iStartIndex,
+            'file_count' => $iFileCount,
+            'installed_before' => 0,
+            'rolled_back_count' => 0,
+            'chunks_completed' => 0,
+            'starting_ledger_events' => 0,
+            'final_ledger_events' => 0,
+            'copied_files' => 0,
+            'copied_bytes' => 0,
+            'runtime_files_changed' => false,
+            'error' => '',
+        );
+
+        if (
+            PHP_SAPI === 'cli'
+            || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST'
+        ) {
+            $aResult['error'] =
+                'Runtime merge rollback work cycle requires an authenticated web POST.';
+            return $aResult;
+        }
+
+        if (!isAdmin()) {
+            $aResult['error'] =
+                'Administrator authorization is required.';
+            return $aResult;
+        }
+
+        if (
+            $iJournalId <= 0
+            || $iStartIndex < 0
+            || $iFileCount < 1
+            || $iFileCount > 250
+            || $iExpectedLedgerEvents === null
+        ) {
+            $aResult['error'] =
+                'A valid journal, range and ledger checkpoint are required.';
+            return $aResult;
+        }
+
+        $aInitial =
+            $this->readAndVerifyRuntimeMergeLedger($iJournalId);
+
+        if (
+            empty($aInitial['ok'])
+            || (int)($aInitial['unjournaled_events'] ?? -1) !== 0
+            || (int)($aInitial['event_count'] ?? -1)
+                !== (int)($aInitial['journal_event_count'] ?? -2)
+        ) {
+            $aResult['error'] =
+                'Rollback work cycle could not establish a synchronized ledger.';
+            return $aResult;
+        }
+
+        $iStartingEvents =
+            (int)($aInitial['event_count'] ?? -1);
+
+        if (
+            $iStartingEvents
+            !== (int)$iExpectedLedgerEvents
+        ) {
+            $aResult['error'] =
+                'Rollback work-cycle checkpoint is stale. Reload the repair state.';
+            return $aResult;
+        }
+
+        $aState = $aInitial['state'] ?? array();
+
+        if (
+            ($aState['phase'] ?? '') !== 'runtime_merging'
+            || empty($aState['runtime_moved'])
+        ) {
+            $aResult['error'] =
+                'Repair journal is not in protected runtime merging state.';
+            return $aResult;
+        }
+
+        $iManifestCount =
+            count($aInitial['manifest'] ?? array());
+        $iEndExclusive =
+            $iStartIndex + $iFileCount;
+
+        if (
+            $iStartIndex >= $iManifestCount
+            || $iEndExclusive > $iManifestCount
+        ) {
+            $aResult['error'] =
+                'Rollback work-cycle range exceeds the execution manifest.';
+            return $aResult;
+        }
+
+        foreach (
+            ($aInitial['entry_states'] ?? array())
+            as $iIndex => $sEntryState
+        ) {
+            if ((string)$sEntryState === 'intent') {
+                $aResult['error'] =
+                    'Rollback work cycle refused because manifest entry '
+                    . (int)$iIndex
+                    . ' has unresolved intent.';
+                return $aResult;
+            }
+        }
+
+        $iInstalledBefore = 0;
+
+        for (
+            $i = $iStartIndex;
+            $i < $iEndExclusive;
+            $i++
+        ) {
+            $sEntryState =
+                (string)(
+                    $aInitial['entry_states'][$i]
+                    ?? ''
+                );
+
+            if (
+                $sEntryState !== ''
+                && $sEntryState !== 'rolled_back'
+                && $sEntryState !== 'installed'
+            ) {
+                $aResult['error'] =
+                    'Unsupported state in rollback work-cycle range at entry '
+                    . $i . '.';
+                return $aResult;
+            }
+
+            if ($sEntryState === 'installed')
+                $iInstalledBefore++;
+        }
+
+        $aResult['installed_before'] =
+            $iInstalledBefore;
+        $aResult['starting_ledger_events'] =
+            $iStartingEvents;
+
+        for (
+            $iCursor = $iEndExclusive;
+            $iCursor > $iStartIndex;
+            $iCursor = $iChunkStart
+        ) {
+            $iChunkStart =
+                max($iStartIndex, $iCursor - 10);
+            $iChunkCount =
+                $iCursor - $iChunkStart;
+
+            $aCurrent =
+                $this->readAndVerifyRuntimeMergeLedger(
+                    $iJournalId
+                );
+
+            if (
+                empty($aCurrent['ok'])
+                || (int)(
+                    $aCurrent['unjournaled_events']
+                    ?? -1
+                ) !== 0
+                || (int)(
+                    $aCurrent['event_count']
+                    ?? -1
+                ) !==
+                (int)(
+                    $aCurrent['journal_event_count']
+                    ?? -2
+                )
+            ) {
+                $aResult['error'] =
+                    'Rollback work cycle lost ledger synchronization.';
+                return $aResult;
+            }
+
+            $iChunkInstalled = 0;
+
+            for (
+                $i = $iChunkStart;
+                $i < $iCursor;
+                $i++
+            ) {
+                if (
+                    (string)(
+                        $aCurrent['entry_states'][$i]
+                        ?? ''
+                    ) === 'installed'
+                ) {
+                    $iChunkInstalled++;
+                }
+            }
+
+            if ($iChunkInstalled > 0) {
+                $aRollback =
+                    $this->rollbackRuntimeMergeBatchEntries(
+                        $iJournalId,
+                        $iChunkStart,
+                        $iChunkCount
+                    );
+
+                if (empty($aRollback['ok'])) {
+                    $aResult['error'] =
+                        'Rollback work cycle stopped at manifest entry '
+                        . $iChunkStart
+                        . ': '
+                        . (
+                            $aRollback['error']
+                            ?? 'unknown rollback error'
+                        );
+                    return $aResult;
+                }
+
+                $aResult['rolled_back_count'] +=
+                    (int)(
+                        $aRollback['rolled_back_count']
+                        ?? 0
+                    );
+
+                $aResult['changes_applied'] =
+                    $aResult['rolled_back_count'] > 0;
+            }
+
+            $aResult['chunks_completed']++;
+        }
+
+        $aFinal =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (
+            empty($aFinal['ok'])
+            || (int)(
+                $aFinal['unjournaled_events']
+                ?? -1
+            ) !== 0
+            || (int)(
+                $aFinal['event_count']
+                ?? -1
+            ) !==
+            (int)(
+                $aFinal['journal_event_count']
+                ?? -2
+            )
+        ) {
+            $aResult['error'] =
+                'Rollback work cycle completed but final ledger verification failed.';
+            return $aResult;
+        }
+
+        for (
+            $i = $iStartIndex;
+            $i < $iEndExclusive;
+            $i++
+        ) {
+            $sFinalState =
+                (string)(
+                    $aFinal['entry_states'][$i]
+                    ?? ''
+                );
+
+            if (
+                $sFinalState === 'intent'
+                || $sFinalState === 'installed'
+            ) {
+                $aResult['error'] =
+                    'Rollback work-cycle final proof left entry '
+                    . $i
+                    . ' active.';
+                return $aResult;
+            }
+        }
+
+        $iFinalEvents =
+            (int)($aFinal['event_count'] ?? -1);
+
+        if (
+            $aResult['rolled_back_count']
+                !== $iInstalledBefore
+            || $iFinalEvents
+                !== (
+                    $iStartingEvents
+                    + $aResult['rolled_back_count']
+                )
+        ) {
+            $aResult['error'] =
+                'Rollback work-cycle durable event proof failed.';
+            return $aResult;
+        }
+
+        $aProgress =
+            ($aFinal['state']['merge']['progress']
+                ?? array());
+
+        $aResult['final_ledger_events'] =
+            $iFinalEvents;
+        $aResult['copied_files'] =
+            (int)($aProgress['copied_files'] ?? 0);
+        $aResult['copied_bytes'] =
+            (int)($aProgress['copied_bytes'] ?? 0);
+        $aResult['runtime_files_changed'] =
+            !empty(
+                $aProgress['runtime_files_changed']
+            );
+        $aResult['ok'] = true;
+
+        return $aResult;
+    }
+
+
+    public function getRuntimeMergeNextBatchState($iJournalId)
+    {
+        $iJournalId = (int)$iJournalId;
+        $iBatchCeiling = 25;
+
+        $r = array(
+            'ok' => false,
+            'journal_id' => $iJournalId,
+            'batch_ceiling' => $iBatchCeiling,
+            'manifest_count' => 0,
+            'installed_count' => 0,
+            'passive_count' => 0,
+            'next_start_index' => -1,
+            'next_batch_files' => 0,
+            'complete' => false,
+            'event_count' => 0,
+            'journal_event_count' => 0,
+            'unjournaled_events' => -1,
+            'error' => '',
+        );
+
+        if ($iJournalId <= 0) {
+            $r['error'] = 'A valid repair journal is required.';
+            return $r;
+        }
+
+        $aJournal = $this->_oDb->getRow(
+            "SELECT `status`, `result_json`
+             FROM `my_una_doctor_repairs`
+             WHERE `id` = ?
+             LIMIT 1",
+            array($iJournalId)
+        );
+
+        $aState = json_decode(
+            (string)($aJournal['result_json'] ?? ''),
+            true
+        );
+
+        if (
+            empty($aJournal)
+            || ($aJournal['status'] ?? '') !== 'runtime_merging'
+            || !is_array($aState)
+            || ($aState['phase'] ?? '') !== 'runtime_merging'
+            || empty($aState['runtime_moved'])
+        ) {
+            $r['error'] =
+                'Automatic continuation requires an active runtime merge.';
+            return $r;
+        }
+
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger($iJournalId);
+
+        if (empty($aLedger['ok'])) {
+            $r['error'] =
+                'Ledger verification failed: '
+                . ($aLedger['error'] ?? 'unknown error');
+            return $r;
+        }
+
+        $r['event_count'] =
+            (int)($aLedger['event_count'] ?? 0);
+        $r['journal_event_count'] =
+            (int)($aLedger['journal_event_count'] ?? 0);
+        $r['unjournaled_events'] =
+            (int)($aLedger['unjournaled_events'] ?? -1);
+
+        if (
+            $r['unjournaled_events'] !== 0
+            || $r['event_count'] !== $r['journal_event_count']
+        ) {
+            $r['error'] =
+                'Ledger and repair journal are not synchronized.';
+            return $r;
+        }
+
+        $aManifest = $aLedger['manifest'] ?? array();
+
+        if (!is_array($aManifest) || !$aManifest) {
+            $r['error'] = 'Runtime merge manifest is unavailable.';
+            return $r;
+        }
+
+        $r['manifest_count'] = count($aManifest);
+
+        foreach ($aManifest as $i => $aEntry) {
+            $sState =
+                (string)($aLedger['entry_states'][$i] ?? '');
+
+            if ($sState === 'installed') {
+                $r['installed_count']++;
+                continue;
+            }
+
+            if ($sState === '' || $sState === 'rolled_back') {
+                $r['passive_count']++;
+
+                if ($r['next_start_index'] < 0) {
+                    $r['next_start_index'] = (int)$i;
+                }
+
+                continue;
+            }
+
+            if ($sState === 'intent') {
+                $r['error'] =
+                    'Recovery is required at manifest entry '
+                    . (int)$i . '.';
+                return $r;
+            }
+
+            $r['error'] =
+                'Unsupported runtime merge state at manifest entry '
+                . (int)$i . '.';
+            return $r;
+        }
+
+        if ($r['next_start_index'] < 0) {
+            $r['complete'] = true;
+            $r['next_start_index'] = $r['manifest_count'];
+            $r['next_batch_files'] = 0;
+        } else {
+            $r['next_batch_files'] =
+                min($iBatchCeiling, $r['passive_count']);
+        }
+
+        $r['ok'] = true;
+        return $r;
+    }
+
+
+    /**
+     * Continue the next automatically derived runtime-merge batch.
+     *
+     * Studio supplies no manifest index and no batch size.
+     * The expected ledger count binds this request to the exact
+     * durable state that the administrator approved.
+     */
+    public function continueRuntimeMergeNextBatch(
+        $iJournalId,
+        $iExpectedLedgerEvents
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iExpectedLedgerEvents =
+            (int)$iExpectedLedgerEvents;
+
+        $r = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'guarded_gateway' => true,
+            'operation' => 'continue_repair',
+            'journal_id' => $iJournalId,
+            'expected_ledger_events' =>
+                $iExpectedLedgerEvents,
+            'start_index' => -1,
+            'max_files' => 0,
+            'complete' => false,
+            'error' => '',
+        );
+
+        if (
+            PHP_SAPI === 'cli'
+            || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST'
+        ) {
+            $r['error'] =
+                'Continue Repair is allowed only from an authenticated web POST.';
+            return $r;
+        }
+
+        if (!isAdmin()) {
+            $r['error'] =
+                'Administrator authorization is required.';
+            return $r;
+        }
+
+        if (
+            $iJournalId <= 0
+            || $iExpectedLedgerEvents < 0
+        ) {
+            $r['error'] =
+                'Continue Repair received an invalid durable checkpoint.';
+            return $r;
+        }
+
+        /*
+         * Derive the next action entirely from authoritative state.
+         */
+        $aNext =
+            $this->getRuntimeMergeNextBatchState(
+                $iJournalId
+            );
+
+        if (empty($aNext['ok'])) {
+            $r['error'] =
+                'Continue Repair could not determine the next safe batch: '
+                . (
+                    $aNext['error']
+                    ?? 'unknown state error'
+                );
+
+            return $r;
+        }
+
+        /*
+         * Reject stale forms, duplicate submissions and old tabs
+         * before any mutation is attempted.
+         */
+        if (
+            (int)(
+                $aNext['event_count']
+                ?? -1
+            ) !== $iExpectedLedgerEvents
+            || (int)(
+                $aNext['journal_event_count']
+                ?? -2
+            ) !== $iExpectedLedgerEvents
+            || (int)(
+                $aNext['unjournaled_events']
+                ?? -1
+            ) !== 0
+        ) {
+            $r['error'] =
+                'Continue Repair checkpoint is stale. Reload the repair page before continuing.';
+
+            return $r;
+        }
+
+        if (!empty($aNext['complete'])) {
+            $r['ok'] = true;
+            $r['complete'] = true;
+            $r['start_index'] =
+                (int)(
+                    $aNext['next_start_index']
+                    ?? -1
+                );
+
+            return $r;
+        }
+
+        $iStartIndex =
+            (int)(
+                $aNext['next_start_index']
+                ?? -1
+            );
+
+        $iBatchFiles =
+            (int)(
+                $aNext['next_batch_files']
+                ?? 0
+            );
+
+        if (
+            $iStartIndex < 0
+            || $iBatchFiles < 1
+            || $iBatchFiles > 25
+        ) {
+            $r['error'] =
+                'Continue Repair derived an invalid bounded batch.';
+            return $r;
+        }
+
+        $r['start_index'] = $iStartIndex;
+        $r['max_files'] = $iBatchFiles;
+
+        /*
+         * The optimized executor independently prepares a new
+         * session and must observe the same ledger checkpoint.
+         */
+        $aBatch =
+            $this->executeRuntimeMergeBatchFromSession(
+                $iJournalId,
+                $iStartIndex,
+                $iBatchFiles,
+                $iExpectedLedgerEvents
+            );
+
+        if (!is_array($aBatch)) {
+            $r['error'] =
+                'Continue Repair executor returned an invalid result.';
+            return $r;
+        }
+
+        $aBatch['guarded_gateway'] = true;
+        $aBatch['operation'] = 'continue_repair';
+        $aBatch['expected_ledger_events'] =
+            $iExpectedLedgerEvents;
+
+        return $aBatch;
+    }
+
+
+    public function continueRuntimeMergeWorkCycle(
+        $iJournalId,
+        $iFileCount,
+        $iExpectedLedgerEvents
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iFileCount = (int)$iFileCount;
+        $iExpectedLedgerEvents =
+            (int)$iExpectedLedgerEvents;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'requested_files' => $iFileCount,
+            'start_index' => -1,
+            'end_index_exclusive' => -1,
+            'batches_completed' => 0,
+            'installed_count' => 0,
+            'installed_bytes' => 0,
+            'starting_ledger_events' => 0,
+            'final_ledger_events' => 0,
+            'copied_files' => 0,
+            'copied_bytes' => 0,
+            'runtime_files_changed' => false,
+            'error' => '',
+        );
+
+        /*
+         * The underlying executor remains deliberately capped at
+         * 25 files. A work cycle may coordinate multiple independently
+         * verified 25-file batches, but never widens that mutation
+         * boundary.
+         */
+        if (
+            PHP_SAPI === 'cli'
+            || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST'
+        ) {
+            $aResult['error'] =
+                'Runtime merge work cycle requires an authenticated web POST.';
+            return $aResult;
+        }
+
+        if (!isAdmin()) {
+            $aResult['error'] =
+                'Administrator authorization is required.';
+            return $aResult;
+        }
+
+        if (
+            $iJournalId <= 0
+            || $iFileCount < 25
+            || $iFileCount > 250
+            || ($iFileCount % 25) !== 0
+            || $iExpectedLedgerEvents < 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge work cycle requires 25 to 250 files in 25-file increments and a valid ledger checkpoint.';
+            return $aResult;
+        }
+
+        $aInitial =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (
+            empty($aInitial['ok'])
+            || (int)(
+                $aInitial['unjournaled_events']
+                ?? -1
+            ) !== 0
+            || (int)(
+                $aInitial['event_count']
+                ?? -1
+            ) !==
+            (int)(
+                $aInitial['journal_event_count']
+                ?? -2
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge work cycle could not establish a synchronized ledger.';
+            return $aResult;
+        }
+
+        $iStartingEvents =
+            (int)(
+                $aInitial['event_count']
+                ?? -1
+            );
+
+        if (
+            $iStartingEvents
+            !== $iExpectedLedgerEvents
+        ) {
+            $aResult['error'] =
+                'Runtime merge work-cycle checkpoint is stale. Reload the repair state.';
+            return $aResult;
+        }
+
+        $aState =
+            $aInitial['state']
+            ?? array();
+
+        if (
+            ($aState['phase'] ?? '')
+                !== 'runtime_merging'
+            || empty($aState['runtime_moved'])
+        ) {
+            $aResult['error'] =
+                'Repair journal is not in protected runtime merging state.';
+            return $aResult;
+        }
+
+        /*
+         * Any unresolved intent anywhere in the manifest blocks a
+         * normal forward work cycle.
+         */
+        foreach (
+            ($aInitial['entry_states'] ?? array())
+            as $iIndex => $sEntryState
+        ) {
+            if ((string)$sEntryState === 'intent') {
+                $aResult['error'] =
+                    'Runtime merge work cycle refused because manifest entry '
+                    . (int)$iIndex
+                    . ' has unresolved intent.';
+                return $aResult;
+            }
+        }
+
+        $aNext =
+            $this->getRuntimeMergeNextBatchState(
+                $iJournalId
+            );
+
+        if (
+            empty($aNext['ok'])
+            || (int)(
+                $aNext['event_count']
+                ?? -1
+            ) !== $iStartingEvents
+            || (int)(
+                $aNext['journal_event_count']
+                ?? -2
+            ) !== $iStartingEvents
+            || (int)(
+                $aNext['unjournaled_events']
+                ?? -1
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Runtime merge work cycle could not establish the next verified batch.';
+            return $aResult;
+        }
+
+        if (!empty($aNext['complete'])) {
+            $aResult['error'] =
+                'Runtime merge is already complete.';
+            return $aResult;
+        }
+
+        $iStartIndex =
+            (int)(
+                $aNext['next_start_index']
+                ?? -1
+            );
+
+        $iManifestCount =
+            count(
+                $aInitial['manifest']
+                ?? array()
+            );
+
+        $iEndExclusive =
+            $iStartIndex + $iFileCount;
+
+        if (
+            $iStartIndex < 0
+            || $iStartIndex >= $iManifestCount
+            || $iEndExclusive > $iManifestCount
+        ) {
+            $aResult['error'] =
+                'Runtime merge work-cycle range exceeds the execution manifest.';
+            return $aResult;
+        }
+
+        /*
+         * The complete requested range must be passive before any
+         * mutation begins. This makes the 250-file proof contiguous
+         * and deterministic.
+         */
+        $iExpectedBytes = 0;
+
+        for (
+            $iIndex = $iStartIndex;
+            $iIndex < $iEndExclusive;
+            $iIndex++
+        ) {
+            $sEntryState =
+                (string)(
+                    $aInitial[
+                        'entry_states'
+                    ][$iIndex]
+                    ?? ''
+                );
+
+            if (
+                $sEntryState !== ''
+                && $sEntryState !== 'rolled_back'
+            ) {
+                $aResult['error'] =
+                    'Runtime merge work-cycle target entry '
+                    . $iIndex
+                    . ' is not passive.';
+                return $aResult;
+            }
+
+            $aEntry =
+                $aInitial['manifest'][$iIndex]
+                ?? array();
+
+            $iExpectedBytes +=
+                (int)(
+                    $aEntry['size']
+                    ?? 0
+                );
+        }
+
+        $aInitialProgress =
+            $aState['merge']['progress']
+            ?? array();
+
+        $iInitialCopiedFiles =
+            (int)(
+                $aInitialProgress['copied_files']
+                ?? 0
+            );
+
+        $iInitialCopiedBytes =
+            (int)(
+                $aInitialProgress['copied_bytes']
+                ?? 0
+            );
+
+        $aResult['start_index'] =
+            $iStartIndex;
+        $aResult['end_index_exclusive'] =
+            $iEndExclusive;
+        $aResult['starting_ledger_events'] =
+            $iStartingEvents;
+        $aResult['installed_bytes'] =
+            $iExpectedBytes;
+
+        $iCurrentEvents =
+            $iStartingEvents;
+
+        $iBatchCount =
+            intdiv($iFileCount, 25);
+
+        for (
+            $iBatch = 0;
+            $iBatch < $iBatchCount;
+            $iBatch++
+        ) {
+            $iBatchStart =
+                $iStartIndex
+                + ($iBatch * 25);
+
+            /*
+             * Fresh authoritative state before every 25-file
+             * mutation boundary.
+             */
+            $aBefore =
+                $this->getRuntimeMergeNextBatchState(
+                    $iJournalId
+                );
+
+            if (
+                empty($aBefore['ok'])
+                || (int)(
+                    $aBefore['event_count']
+                    ?? -1
+                ) !== $iCurrentEvents
+                || (int)(
+                    $aBefore['journal_event_count']
+                    ?? -2
+                ) !== $iCurrentEvents
+                || (int)(
+                    $aBefore['unjournaled_events']
+                    ?? -1
+                ) !== 0
+                || !empty($aBefore['complete'])
+                || (int)(
+                    $aBefore['next_start_index']
+                    ?? -1
+                ) !== $iBatchStart
+                || (int)(
+                    $aBefore['next_batch_files']
+                    ?? -1
+                ) !== 25
+            ) {
+                $aResult['error'] =
+                    'Runtime merge work cycle stopped before batch '
+                    . ($iBatch + 1)
+                    . ' because the verified continuation state changed.';
+                return $aResult;
+            }
+
+            $iInstalledBefore =
+                (int)(
+                    $aBefore['installed_count']
+                    ?? -1
+                );
+
+            $iPassiveBefore =
+                (int)(
+                    $aBefore['passive_count']
+                    ?? -1
+                );
+
+            $aBatchResult =
+                $this->continueRuntimeMergeNextBatch(
+                    $iJournalId,
+                    $iCurrentEvents
+                );
+
+            if (
+                !is_array($aBatchResult)
+                || empty($aBatchResult['ok'])
+            ) {
+                $aResult['error'] =
+                    'Runtime merge work cycle stopped during batch '
+                    . ($iBatch + 1)
+                    . ': '
+                    . (
+                        is_array($aBatchResult)
+                            ? (
+                                $aBatchResult['error']
+                                ?? 'unknown continuation error'
+                            )
+                            : 'invalid continuation result'
+                    );
+                return $aResult;
+            }
+
+            /*
+             * Verify the exact 25-file range, including live
+             * destination identity, before allowing another batch.
+             */
+            $aRange =
+                $this->getRuntimeMergeRangeState(
+                    $iJournalId,
+                    $iBatchStart,
+                    25
+                );
+
+            if (
+                empty($aRange['ok'])
+                || (int)(
+                    $aRange['installed_count']
+                    ?? -1
+                ) !== 25
+                || (int)(
+                    $aRange['intent_count']
+                    ?? -1
+                ) !== 0
+                || (int)(
+                    $aRange['passive_count']
+                    ?? -1
+                ) !== 0
+            ) {
+                $aResult['error'] =
+                    'Runtime merge work cycle stopped because batch '
+                    . ($iBatch + 1)
+                    . ' did not pass its exact installed-range proof.';
+                return $aResult;
+            }
+
+            $aAfter =
+                $this->getRuntimeMergeNextBatchState(
+                    $iJournalId
+                );
+
+            $iExpectedAfterEvents =
+                $iCurrentEvents + 50;
+
+            if (
+                empty($aAfter['ok'])
+                || (int)(
+                    $aAfter['event_count']
+                    ?? -1
+                ) !== $iExpectedAfterEvents
+                || (int)(
+                    $aAfter['journal_event_count']
+                    ?? -2
+                ) !== $iExpectedAfterEvents
+                || (int)(
+                    $aAfter['unjournaled_events']
+                    ?? -1
+                ) !== 0
+                || (int)(
+                    $aAfter['installed_count']
+                    ?? -1
+                ) !== ($iInstalledBefore + 25)
+                || (int)(
+                    $aAfter['passive_count']
+                    ?? -1
+                ) !== ($iPassiveBefore - 25)
+            ) {
+                $aResult['error'] =
+                    'Runtime merge work cycle stopped because batch '
+                    . ($iBatch + 1)
+                    . ' failed its ledger/progress proof.';
+                return $aResult;
+            }
+
+            $iCurrentEvents =
+                $iExpectedAfterEvents;
+
+            $aResult['batches_completed']++;
+            $aResult['installed_count'] += 25;
+            $aResult['changes_applied'] = true;
+        }
+
+        /*
+         * Final independent durable proof across the entire cycle.
+         */
+        $aFinal =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (
+            empty($aFinal['ok'])
+            || (int)(
+                $aFinal['unjournaled_events']
+                ?? -1
+            ) !== 0
+            || (int)(
+                $aFinal['event_count']
+                ?? -1
+            ) !== $iCurrentEvents
+            || (int)(
+                $aFinal['journal_event_count']
+                ?? -2
+            ) !== $iCurrentEvents
+        ) {
+            $aResult['error'] =
+                'Runtime merge work cycle completed but final ledger verification failed.';
+            return $aResult;
+        }
+
+        for (
+            $iIndex = $iStartIndex;
+            $iIndex < $iEndExclusive;
+            $iIndex++
+        ) {
+            if (
+                (string)(
+                    $aFinal[
+                        'entry_states'
+                    ][$iIndex]
+                    ?? ''
+                ) !== 'installed'
+            ) {
+                $aResult['error'] =
+                    'Runtime merge work-cycle final proof did not find entry '
+                    . $iIndex
+                    . ' installed.';
+                return $aResult;
+            }
+        }
+
+        if (
+            $iCurrentEvents
+            !== (
+                $iStartingEvents
+                + ($iFileCount * 2)
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge work-cycle durable event delta is incorrect.';
+            return $aResult;
+        }
+
+        $aFinalState =
+            $aFinal['state']
+            ?? array();
+
+        $aFinalProgress =
+            $aFinalState['merge']['progress']
+            ?? array();
+
+        $iFinalCopiedFiles =
+            (int)(
+                $aFinalProgress['copied_files']
+                ?? -1
+            );
+
+        $iFinalCopiedBytes =
+            (int)(
+                $aFinalProgress['copied_bytes']
+                ?? -1
+            );
+
+        if (
+            $iFinalCopiedFiles
+            !== ($iInitialCopiedFiles + $iFileCount)
+            || $iFinalCopiedBytes
+            !== ($iInitialCopiedBytes + $iExpectedBytes)
+            || empty(
+                $aFinalProgress[
+                    'runtime_files_changed'
+                ]
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge work-cycle final copied-file progress proof failed.';
+            return $aResult;
+        }
+
+        $aResult['final_ledger_events'] =
+            $iCurrentEvents;
+        $aResult['copied_files'] =
+            $iFinalCopiedFiles;
+        $aResult['copied_bytes'] =
+            $iFinalCopiedBytes;
+        $aResult['runtime_files_changed'] =
+            true;
+        $aResult['ok'] = true;
+
+        return $aResult;
+    }
+
+
+
+    /**
+     * Adaptive protected runtime-merge coordinator.
+     *
+     * The proven continueRuntimeMergeWorkCycle() executor remains
+     * unchanged and capped at 250 files. Large manifests may run
+     * several independently verified work cycles in one POST.
+     */
+    public function continueRuntimeMergeAdaptiveWorkCycle(
+        $iJournalId,
+        $iExpectedLedgerEvents
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iExpectedLedgerEvents =
+            (int)$iExpectedLedgerEvents;
+
+        $fStarted =
+            microtime(true);
+
+        /*
+         * Leave headroom for the surrounding PHP/web request.
+         * The limit is checked only after a fully verified work cycle.
+         */
+        $fTimeLimitSeconds = 18.0;
+
+        $iNormalLimit = 250;
+        $iLargeLimit = 250;
+        $iLargeManifestThreshold = 2000;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'requested_files' => 0,
+            'start_index' => -1,
+            'end_index_exclusive' => -1,
+            'manifest_count' => 0,
+            'installed_count' => 0,
+            'installed_bytes' => 0,
+            'starting_ledger_events' => 0,
+            'final_ledger_events' => 0,
+            'batches_completed' => 0,
+            'work_cycles_completed' => 0,
+            'partial_batches_completed' => 0,
+            'large_module_mode' => false,
+            'time_limit_seconds' => $fTimeLimitSeconds,
+            'time_limit_reached' => false,
+            'elapsed_seconds' => 0.0,
+            'progress_completed' => 0,
+            'progress_percent' => 0.0,
+            'remaining_files' => 0,
+            'estimated_clicks_remaining' => 0,
+            'complete' => false,
+            'error' => '',
+        );
+
+        if (
+            PHP_SAPI === 'cli'
+            || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST'
+        ) {
+            $aResult['error'] =
+                'Adaptive runtime merge requires an authenticated web POST.';
+            return $aResult;
+        }
+
+        if (!isAdmin()) {
+            $aResult['error'] =
+                'Administrator authorization is required.';
+            return $aResult;
+        }
+
+        if (
+            $iJournalId <= 0
+            || $iExpectedLedgerEvents < 0
+        ) {
+            $aResult['error'] =
+                'Adaptive runtime merge requires a valid repair journal and ledger checkpoint.';
+            return $aResult;
+        }
+
+        $aInitial =
+            $this->getRuntimeMergeNextBatchState(
+                $iJournalId
+            );
+
+        if (
+            empty($aInitial['ok'])
+            || (int)(
+                $aInitial['event_count']
+                ?? -1
+            ) !== $iExpectedLedgerEvents
+            || (int)(
+                $aInitial['journal_event_count']
+                ?? -2
+            ) !== $iExpectedLedgerEvents
+            || (int)(
+                $aInitial['unjournaled_events']
+                ?? -1
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Adaptive runtime merge could not establish the verified starting checkpoint.';
+            return $aResult;
+        }
+
+        $iInstalledStart =
+            (int)(
+                $aInitial['installed_count']
+                ?? -1
+            );
+
+        $iPassiveStart =
+            (int)(
+                $aInitial['passive_count']
+                ?? -1
+            );
+
+        if (
+            $iInstalledStart < 0
+            || $iPassiveStart < 0
+        ) {
+            $aResult['error'] =
+                'Adaptive runtime merge starting progress is invalid.';
+            return $aResult;
+        }
+
+        $iManifestCount =
+            $iInstalledStart
+            + $iPassiveStart;
+
+        if ($iManifestCount <= 0) {
+            $aResult['error'] =
+                'Adaptive runtime merge manifest count is invalid.';
+            return $aResult;
+        }
+
+        $bComplete =
+            !empty($aInitial['complete']);
+
+        $iStartIndex =
+            $bComplete
+                ? $iManifestCount
+                : (int)(
+                    $aInitial['next_start_index']
+                    ?? -1
+                );
+
+        if (
+            !$bComplete
+            && (
+                $iStartIndex < 0
+                || $iStartIndex > $iManifestCount
+            )
+        ) {
+            $aResult['error'] =
+                'Adaptive runtime merge next manifest index is invalid.';
+            return $aResult;
+        }
+
+        $bLargeModule =
+            $iManifestCount
+            >= $iLargeManifestThreshold;
+
+        $iPerClickLimit =
+            $bLargeModule
+                ? $iLargeLimit
+                : $iNormalLimit;
+
+        $iRequestedFiles =
+            min(
+                $iPerClickLimit,
+                $iPassiveStart
+            );
+
+        $aResult['requested_files'] =
+            $iRequestedFiles;
+
+        $aResult['start_index'] =
+            $iStartIndex;
+
+        $aResult['end_index_exclusive'] =
+            $iStartIndex;
+
+        $aResult['manifest_count'] =
+            $iManifestCount;
+
+        $aResult['starting_ledger_events'] =
+            $iExpectedLedgerEvents;
+
+        $aResult['final_ledger_events'] =
+            $iExpectedLedgerEvents;
+
+        $aResult['large_module_mode'] =
+            $bLargeModule;
+
+        if ($bComplete || $iPassiveStart === 0) {
+            $aResult['progress_completed'] =
+                $iManifestCount;
+
+            $aResult['progress_percent'] =
+                100.0;
+
+            $aResult['remaining_files'] = 0;
+            $aResult['estimated_clicks_remaining'] = 0;
+            $aResult['complete'] = true;
+            $aResult['elapsed_seconds'] =
+                microtime(true) - $fStarted;
+            $aResult['ok'] = true;
+
+            return $aResult;
+        }
+
+        $iCurrentEvents =
+            $iExpectedLedgerEvents;
+
+        while (
+            $aResult['installed_count']
+            < $iRequestedFiles
+        ) {
+            /*
+             * Never interrupt an active mutation. The timer is checked
+             * only while Doctor is already sitting at a verified
+             * checkpoint.
+             */
+            if (
+                !empty($aResult['changes_applied'])
+                && (
+                    microtime(true)
+                    - $fStarted
+                ) >= $fTimeLimitSeconds
+            ) {
+                $aResult['time_limit_reached'] =
+                    true;
+                break;
+            }
+
+            $aBefore =
+                $this->getRuntimeMergeNextBatchState(
+                    $iJournalId
+                );
+
+            if (
+                empty($aBefore['ok'])
+                || (int)(
+                    $aBefore['event_count']
+                    ?? -1
+                ) !== $iCurrentEvents
+                || (int)(
+                    $aBefore['journal_event_count']
+                    ?? -2
+                ) !== $iCurrentEvents
+                || (int)(
+                    $aBefore['unjournaled_events']
+                    ?? -1
+                ) !== 0
+            ) {
+                $aResult['error'] =
+                    'Adaptive runtime merge stopped because the verified continuation checkpoint changed.';
+                return $aResult;
+            }
+
+            if (!empty($aBefore['complete'])) {
+                break;
+            }
+
+            $iPassiveNow =
+                (int)(
+                    $aBefore['passive_count']
+                    ?? -1
+                );
+
+            $iRemainingTarget =
+                $iRequestedFiles
+                - (int)$aResult['installed_count'];
+
+            if (
+                $iPassiveNow <= 0
+                || $iRemainingTarget <= 0
+            ) {
+                break;
+            }
+
+            $iNextBatchFiles =
+                (int)(
+                    $aBefore['next_batch_files']
+                    ?? 0
+                );
+
+            /*
+             * Use the existing proven 250-file work-cycle engine
+             * whenever at least one complete 25-file group remains.
+             */
+            if (
+                $iRemainingTarget >= 25
+                && $iPassiveNow >= 25
+                && $iNextBatchFiles === 25
+            ) {
+                $iChunkAvailable =
+                    min(
+                        $iRemainingTarget,
+                        $iPassiveNow,
+                        250
+                    );
+
+                $iChunkFiles =
+                    intdiv(
+                        $iChunkAvailable,
+                        25
+                    ) * 25;
+
+                if ($iChunkFiles >= 25) {
+                    $aCycle =
+                        $this->continueRuntimeMergeWorkCycle(
+                            $iJournalId,
+                            $iChunkFiles,
+                            $iCurrentEvents
+                        );
+
+                    if (
+                        !is_array($aCycle)
+                        || empty($aCycle['ok'])
+                    ) {
+                        $aResult['error'] =
+                            'Adaptive runtime merge stopped during a verified work cycle: '
+                            . (
+                                is_array($aCycle)
+                                    ? (
+                                        $aCycle['error']
+                                        ?? 'unknown work-cycle error'
+                                    )
+                                    : 'invalid work-cycle result'
+                            );
+
+                        return $aResult;
+                    }
+
+                    $iDone =
+                        (int)(
+                            $aCycle['installed_count']
+                            ?? 0
+                        );
+
+                    if ($iDone !== $iChunkFiles) {
+                        $aResult['error'] =
+                            'Adaptive runtime merge work-cycle count did not match its verified request.';
+                        return $aResult;
+                    }
+
+                    $iNewEvents =
+                        (int)(
+                            $aCycle['final_ledger_events']
+                            ?? -1
+                        );
+
+                    if ($iNewEvents <= $iCurrentEvents) {
+                        $aResult['error'] =
+                            'Adaptive runtime merge work cycle returned an invalid ledger checkpoint.';
+                        return $aResult;
+                    }
+
+                    $aResult['installed_count'] +=
+                        $iDone;
+
+                    $aResult['installed_bytes'] +=
+                        (int)(
+                            $aCycle['installed_bytes']
+                            ?? 0
+                        );
+
+                    $aResult['batches_completed'] +=
+                        (int)(
+                            $aCycle['batches_completed']
+                            ?? 0
+                        );
+
+                    $aResult['work_cycles_completed']++;
+
+                    $aResult['changes_applied'] =
+                        true;
+
+                    $iCurrentEvents =
+                        $iNewEvents;
+
+                    continue;
+                }
+            }
+
+            /*
+             * Final manifest remainder smaller than 25 files.
+             * The existing guarded next-batch executor derives the
+             * exact final size from authoritative state.
+             */
+            $aBatch =
+                $this->continueRuntimeMergeNextBatch(
+                    $iJournalId,
+                    $iCurrentEvents
+                );
+
+            if (
+                !is_array($aBatch)
+                || empty($aBatch['ok'])
+            ) {
+                $aResult['error'] =
+                    'Adaptive runtime merge stopped during the final protected batch: '
+                    . (
+                        is_array($aBatch)
+                            ? (
+                                $aBatch['error']
+                                ?? 'unknown final-batch error'
+                            )
+                            : 'invalid final-batch result'
+                    );
+
+                return $aResult;
+            }
+
+            $iDone =
+                (int)(
+                    $aBatch['installed_count']
+                    ?? 0
+                );
+
+            if (
+                $iDone <= 0
+                || $iDone > $iRemainingTarget
+                || $iDone > $iPassiveNow
+            ) {
+                $aResult['error'] =
+                    'Adaptive runtime merge final protected batch returned an invalid installed count.';
+                return $aResult;
+            }
+
+            $iNewEvents =
+                (int)(
+                    $aBatch['final_ledger_events']
+                    ?? -1
+                );
+
+            if ($iNewEvents <= $iCurrentEvents) {
+                $aResult['error'] =
+                    'Adaptive runtime merge final protected batch returned an invalid ledger checkpoint.';
+                return $aResult;
+            }
+
+            $aResult['installed_count'] +=
+                $iDone;
+
+            $aResult['installed_bytes'] +=
+                (int)(
+                    $aBatch['installed_bytes']
+                    ?? 0
+                );
+
+            $aResult['batches_completed']++;
+            $aResult['partial_batches_completed']++;
+
+            $aResult['changes_applied'] =
+                true;
+
+            $iCurrentEvents =
+                $iNewEvents;
+        }
+
+        /*
+         * Independent final checkpoint for the complete adaptive
+         * request, regardless of whether the time ceiling was reached.
+         */
+        $aFinal =
+            $this->getRuntimeMergeNextBatchState(
+                $iJournalId
+            );
+
+        if (
+            empty($aFinal['ok'])
+            || (int)(
+                $aFinal['event_count']
+                ?? -1
+            ) !== $iCurrentEvents
+            || (int)(
+                $aFinal['journal_event_count']
+                ?? -2
+            ) !== $iCurrentEvents
+            || (int)(
+                $aFinal['unjournaled_events']
+                ?? -1
+            ) !== 0
+        ) {
+            $aResult['error'] =
+                'Adaptive runtime merge final checkpoint verification failed.';
+            return $aResult;
+        }
+
+        $iInstalledFinal =
+            (int)(
+                $aFinal['installed_count']
+                ?? -1
+            );
+
+        $iPassiveFinal =
+            (int)(
+                $aFinal['passive_count']
+                ?? -1
+            );
+
+        if (
+            $iInstalledFinal
+                !== (
+                    $iInstalledStart
+                    + $aResult['installed_count']
+                )
+            || $iPassiveFinal
+                !== (
+                    $iPassiveStart
+                    - $aResult['installed_count']
+                )
+            || (
+                $iInstalledFinal
+                + $iPassiveFinal
+            ) !== $iManifestCount
+        ) {
+            $aResult['error'] =
+                'Adaptive runtime merge final manifest progress proof failed.';
+            return $aResult;
+        }
+
+        $bComplete =
+            !empty($aFinal['complete']);
+
+        $iProgressCompleted =
+            $iManifestCount
+            - $iPassiveFinal;
+
+        $iNextIndex =
+            $bComplete
+                ? $iManifestCount
+                : (int)(
+                    $aFinal['next_start_index']
+                    ?? -1
+                );
+
+        if (
+            $iNextIndex < 0
+            || $iNextIndex !== $iProgressCompleted
+        ) {
+            $aResult['error'] =
+                'Adaptive runtime merge final manifest cursor proof failed.';
+            return $aResult;
+        }
+
+        $aResult['end_index_exclusive'] =
+            $iNextIndex;
+
+        $aResult['final_ledger_events'] =
+            $iCurrentEvents;
+
+        $aResult['progress_completed'] =
+            $iProgressCompleted;
+
+        $aResult['remaining_files'] =
+            $iPassiveFinal;
+
+        $aResult['progress_percent'] =
+            $iManifestCount > 0
+                ? (
+                    (
+                        $iProgressCompleted
+                        / $iManifestCount
+                    ) * 100
+                )
+                : 0.0;
+
+        $aResult['complete'] =
+            $bComplete;
+
+        if ($bComplete) {
+            $aResult['time_limit_reached'] =
+                false;
+
+            $aResult['estimated_clicks_remaining'] =
+                0;
+        } else {
+            $iFutureLimit =
+                $bLargeModule
+                    ? $iLargeLimit
+                    : $iNormalLimit;
+
+            $aResult['estimated_clicks_remaining'] =
+                (int)ceil(
+                    $iPassiveFinal
+                    / $iFutureLimit
+                );
+        }
+
+        $aResult['elapsed_seconds'] =
+            microtime(true)
+            - $fStarted;
+
+        $aResult['ok'] = true;
+
+        return $aResult;
+    }
+
+
+    public function continueRuntimeMerge(
+        $iJournalId,
+        $iStartIndex = 0,
+        $iMaxFiles = 10
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $iStartIndex = (int)$iStartIndex;
+        $iMaxFiles = (int)$iMaxFiles;
+
+        $aResult = array(
+            'ok' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'start_index' => $iStartIndex,
+            'max_files' => $iMaxFiles,
+            'guarded_gateway' => true,
+            'error' => '',
+        );
+
+        /*
+         * Match Doctor's existing mutation policy:
+         * authenticated web POST only.
+         */
+        if (
+            PHP_SAPI === 'cli'
+            || ($_SERVER['REQUEST_METHOD'] ?? '')
+                !== 'POST'
+        ) {
+            $aResult['error'] =
+                'Runtime merge execution is allowed only from an authenticated web POST.';
+
+            return $aResult;
+        }
+
+        if (!isAdmin()) {
+            $aResult['error'] =
+                'Administrator authorization is required.';
+
+            return $aResult;
+        }
+
+        if (
+            $iJournalId <= 0
+            || $iStartIndex < 0
+            || $iMaxFiles < 1
+            || $iMaxFiles > 25
+        ) {
+            $aResult['error'] =
+                'Runtime merge execution parameters are outside the guarded limits.';
+
+            return $aResult;
+        }
+
+        /*
+         * Independent gateway state verification.
+         */
+        $aJournal =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`, `error_text`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        if (empty($aJournal)) {
+            $aResult['error'] =
+                'Repair journal was not found.';
+
+            return $aResult;
+        }
+
+        $aState =
+            json_decode(
+                (string)(
+                    $aJournal['result_json']
+                    ?? ''
+                ),
+                true
+            );
+
+        if (
+            (string)(
+                $aJournal['status']
+                ?? ''
+            ) !== 'runtime_merging'
+            || !is_array($aState)
+            || (string)(
+                $aState['phase']
+                ?? ''
+            ) !== 'runtime_merging'
+            || empty(
+                $aState['runtime_moved']
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge execution requires an exact runtime_merging journal with protected runtime still moved.';
+
+            return $aResult;
+        }
+
+        /*
+         * The durable ledger must already be fully synchronized.
+         * Do not silently reconcile here; recovery remains an
+         * explicit separate operation.
+         */
+        $aLedger =
+            $this->readAndVerifyRuntimeMergeLedger(
+                $iJournalId
+            );
+
+        if (empty($aLedger['ok'])) {
+            $aResult['error'] =
+                'Runtime merge execution ledger verification failed: '
+                . (
+                    $aLedger['error']
+                    ?? 'unknown ledger error'
+                );
+
+            return $aResult;
+        }
+
+        if (
+            (int)(
+                $aLedger['unjournaled_events']
+                ?? -1
+            ) !== 0
+            || (int)(
+                $aLedger['event_count']
+                ?? -1
+            ) !==
+            (int)(
+                $aLedger['journal_event_count']
+                ?? -2
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge execution refused because the durable ledger and journal are not synchronized.';
+
+            return $aResult;
+        }
+
+        /*
+         * A durable intent means recovery must occur before any
+         * additional generated file is installed.
+         */
+        foreach (
+            (
+                $aLedger['entry_states']
+                ?? array()
+            )
+            as $iIndex => $sState
+        ) {
+            if ((string)$sState === 'intent') {
+                $aResult['error'] =
+                    'Runtime merge execution refused because manifest entry '
+                    . (int)$iIndex
+                    . ' has an unresolved durable intent.';
+
+                return $aResult;
+            }
+        }
+
+        /*
+         * Delegate mutation only after every public gateway guard
+         * has independently passed.
+         */
+        $aBatch =
+            $this->executeRuntimeMergeBatchFromSession(
+                $iJournalId,
+                $iStartIndex,
+                $iMaxFiles
+            );
+
+        if (!is_array($aBatch)) {
+            $aResult['error'] =
+                'Runtime merge executor returned an invalid result.';
+
+            return $aResult;
+        }
+
+        $aBatch['guarded_gateway'] =
+            true;
+
+        return $aBatch;
+    }
+
+
+    public function beginRuntimeMerge(
+        $iJournalId,
+        $sApprovedMergePlanId
+    ) {
+        $iJournalId = (int)$iJournalId;
+        $sApprovedMergePlanId =
+            trim((string)$sApprovedMergePlanId);
+
+        $aResult = array(
+            'ok' => false,
+            'checkpointed' => false,
+            'changes_applied' => false,
+            'runtime_files_changed' => false,
+            'journal_id' => $iJournalId,
+            'merge_plan_id' =>
+                $sApprovedMergePlanId,
+            'error' => '',
+        );
+
+        if (
+            PHP_SAPI === 'cli'
+            || ($_SERVER['REQUEST_METHOD'] ?? '')
+                !== 'POST'
+        ) {
+            $aResult['error'] =
+                'Runtime merge checkpoint is allowed only from an authenticated web POST.';
+
+            return $aResult;
+        }
+
+        if (!isAdmin()) {
+            $aResult['error'] =
+                'Administrator authorization is required.';
+
+            return $aResult;
+        }
+
+        if (
+            $iJournalId <= 0
+            || $sApprovedMergePlanId === ''
+        ) {
+            $aResult['error'] =
+                'A valid journal ID and approved merge plan ID are required.';
+
+            return $aResult;
+        }
+
+        /*
+         * The authoritative journal must still be exactly
+         * runtime_protected before merge preparation begins.
+         */
+        $aJournal = $this->_oDb->getRow(
+            "SELECT *
+             FROM `my_una_doctor_repairs`
+             WHERE `id` = ?
+             LIMIT 1",
+            array($iJournalId)
+        );
+
+        if (empty($aJournal)) {
+            $aResult['error'] =
+                'Repair journal was not found.';
+
+            return $aResult;
+        }
+
+        if (
+            (string)$aJournal['status']
+            !== 'runtime_protected'
+        ) {
+            $aResult['error'] =
+                'Runtime merge requires a runtime-protected repair journal.';
+
+            return $aResult;
+        }
+
+        $aProtected = json_decode(
+            (string)$aJournal['result_json'],
+            true
+        );
+
+        if (
+            !is_array($aProtected)
+            || ($aProtected['phase'] ?? '')
+                !== 'runtime_protected'
+            || empty($aProtected['runtime_moved'])
+        ) {
+            $aResult['error'] =
+                'Runtime-protected journal state is incomplete or inconsistent.';
+
+            return $aResult;
+        }
+
+        /*
+         * Build the complete content-hashed execution manifest
+         * from a fresh merge plan. This also proves the browser
+         * approval is still current.
+         */
+        $aExecution =
+            $this->buildRuntimeMergeExecutionManifest(
+                $iJournalId,
+                $sApprovedMergePlanId
+            );
+
+        if (
+            empty($aExecution['ok'])
+            || empty($aExecution['ready'])
+        ) {
+            $aResult['error'] =
+                'Runtime merge execution manifest is not ready: '
+                . (
+                    $aExecution['error']
+                    ?? 'unknown error'
+                );
+
+            if (
+                !empty(
+                    $aExecution[
+                        'fresh_merge_plan_id'
+                    ]
+                )
+            ) {
+                $aResult['fresh_merge_plan_id'] =
+                    (string)$aExecution[
+                        'fresh_merge_plan_id'
+                    ];
+            }
+
+            return $aResult;
+        }
+
+        /*
+         * Publish the complete SHA-256 execution contract
+         * beside, never inside, the protected runtime tree.
+         */
+        $aPersist =
+            $this->persistRuntimeMergeExecutionManifest(
+                $iJournalId,
+                $aExecution
+            );
+
+        if (empty($aPersist['ok'])) {
+            $aResult['error'] =
+                'Runtime merge execution manifest could not be persisted: '
+                . (
+                    $aPersist['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        /*
+         * A sidecar may now exist. Before changing journal state,
+         * perform one final independent read-only merge preflight.
+         * No runtime destination may have appeared, no baseline
+         * may have changed and the control barrier must still be
+         * exact.
+         */
+        $aFinalPlan =
+            $this->getPostUpdateRuntimeMergePlan(
+                $iJournalId
+            );
+
+        if (
+            empty($aFinalPlan['ok'])
+            || empty($aFinalPlan['ready'])
+        ) {
+            $aResult['error'] =
+                'Final runtime merge preflight is no longer ready: '
+                . (
+                    $aFinalPlan['error']
+                    ?? 'unknown error'
+                );
+
+            return $aResult;
+        }
+
+        $sFinalMergePlanId =
+            (string)(
+                $aFinalPlan['merge_plan_id']
+                ?? ''
+            );
+
+        if (
+            $sFinalMergePlanId === ''
+            || !hash_equals(
+                $sApprovedMergePlanId,
+                $sFinalMergePlanId
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge plan changed after manifest creation. No runtime files were copied.';
+
+            $aResult['fresh_merge_plan_id'] =
+                $sFinalMergePlanId;
+
+            return $aResult;
+        }
+
+        $encode = static function ($value) {
+            $json = json_encode(
+                $value,
+                JSON_UNESCAPED_SLASHES
+                | JSON_UNESCAPED_UNICODE
+                | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+            if ($json === false)
+                throw new RuntimeException(
+                    'Runtime merge journal JSON encoding failed.'
+                );
+
+            return $json;
+        };
+
+        /*
+         * Durable mutation checkpoint.
+         *
+         * IMPORTANT:
+         * No generated runtime destination has been copied yet.
+         * This state exists specifically so any later filesystem
+         * mutation begins from a durable, content-hashed recovery
+         * contract.
+         */
+        $aMergingState =
+            $aProtected;
+
+        $aMergingState['phase'] =
+            'runtime_merging';
+
+        $aMergingState['changes_applied'] =
+            true;
+
+        $aMergingState['runtime_moved'] =
+            true;
+
+        $aMergingState['merge'] = array(
+            'merge_plan_id' =>
+                $sFinalMergePlanId,
+
+            'execution_manifest_id' =>
+                (string)(
+                    $aExecution[
+                        'execution_manifest_id'
+                    ]
+                    ?? ''
+                ),
+
+            'manifest_path' =>
+                (string)(
+                    $aPersist[
+                        'manifest_path'
+                    ]
+                    ?? ''
+                ),
+
+            'manifest_file_sha256' =>
+                (string)(
+                    $aPersist[
+                        'manifest_file_sha256'
+                    ]
+                    ?? ''
+                ),
+
+            'manifest_file_bytes' =>
+                (int)(
+                    $aPersist[
+                        'manifest_file_bytes'
+                    ]
+                    ?? 0
+                ),
+
+            'manifest_count' =>
+                (int)(
+                    $aExecution[
+                        'manifest_count'
+                    ]
+                    ?? 0
+                ),
+
+            'manifest_bytes' =>
+                (int)(
+                    $aExecution[
+                        'manifest_bytes'
+                    ]
+                    ?? 0
+                ),
+
+            'protected_inventory_id' =>
+                (string)(
+                    $aExecution[
+                        'protected_inventory_id'
+                    ]
+                    ?? ''
+                ),
+
+            'module_version' =>
+                (string)(
+                    $aExecution['version']
+                    ?? ''
+                ),
+
+            'started_at' =>
+                time(),
+
+            'progress' => array(
+                'phase' =>
+                    'checkpointed',
+
+                'copied_files' =>
+                    0,
+
+                'copied_bytes' =>
+                    0,
+
+                'last_file' =>
+                    '',
+
+                'runtime_files_changed' =>
+                    false,
+            ),
+        );
+
+        try {
+            $this->requireRepairJournalUpdate(
+                $iJournalId,
+                array(
+                    'status' =>
+                        'runtime_merging',
+
+                    'result_json' =>
+                        $encode(
+                            $aMergingState
+                        ),
+
+                    'error_text' =>
+                        '',
+                )
+            );
+        } catch (Throwable $e) {
+            /*
+             * The sidecar is intentionally retained. Because it
+             * is immutable and journal-specific, a retry from
+             * runtime_protected can verify/reuse the exact file.
+             */
+            $aResult['error'] =
+                'Runtime merge checkpoint could not be journaled: '
+                . $e->getMessage();
+
+            return $aResult;
+        }
+
+        /*
+         * Verify more than the status. The exact manifest
+         * identities must survive the durable DB write.
+         */
+        $aVerifyJournal =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`, `error_text`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array($iJournalId)
+            );
+
+        $aVerifyState =
+            json_decode(
+                (string)(
+                    $aVerifyJournal[
+                        'result_json'
+                    ]
+                    ?? ''
+                ),
+                true
+            );
+
+        $aVerifyMerge =
+            is_array($aVerifyState)
+                ? (
+                    $aVerifyState['merge']
+                    ?? array()
+                )
+                : array();
+
+        if (
+            empty($aVerifyJournal)
+            || (string)(
+                $aVerifyJournal['status']
+                ?? ''
+            ) !== 'runtime_merging'
+            || !is_array($aVerifyState)
+            || ($aVerifyState['phase'] ?? '')
+                !== 'runtime_merging'
+            || empty($aVerifyState['runtime_moved'])
+            || !hash_equals(
+                $sFinalMergePlanId,
+                (string)(
+                    $aVerifyMerge[
+                        'merge_plan_id'
+                    ]
+                    ?? ''
+                )
+            )
+            || !hash_equals(
+                (string)(
+                    $aExecution[
+                        'execution_manifest_id'
+                    ]
+                    ?? ''
+                ),
+                (string)(
+                    $aVerifyMerge[
+                        'execution_manifest_id'
+                    ]
+                    ?? ''
+                )
+            )
+            || (
+                (int)(
+                    $aVerifyMerge[
+                        'progress'
+                    ]['copied_files']
+                    ?? -1
+                ) !== 0
+            )
+            || !empty(
+                $aVerifyMerge[
+                    'progress'
+                ]['runtime_files_changed']
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime merge checkpoint journal verification failed. No runtime files were copied.';
+
+            return $aResult;
+        }
+
+        $aResult['ok'] = true;
+        $aResult['checkpointed'] = true;
+        $aResult['changes_applied'] = true;
+        $aResult['runtime_files_changed'] =
+            false;
+
+        $aResult['fresh_merge_plan_id'] =
+            $sFinalMergePlanId;
+
+        $aResult['execution_manifest_id'] =
+            (string)(
+                $aExecution[
+                    'execution_manifest_id'
+                ]
+                ?? ''
+            );
+
+        $aResult['manifest_path'] =
+            (string)(
+                $aPersist['manifest_path']
+                ?? ''
+            );
+
+        $aResult['manifest_file_sha256'] =
+            (string)(
+                $aPersist[
+                    'manifest_file_sha256'
+                ]
+                ?? ''
+            );
+
+        $aResult['manifest_count'] =
+            (int)(
+                $aExecution['manifest_count']
+                ?? 0
+            );
+
+        $aResult['manifest_bytes'] =
+            (int)(
+                $aExecution['manifest_bytes']
+                ?? 0
+            );
 
         return $aResult;
     }
@@ -4964,6 +21094,40 @@ class MyUnaDoctorModule extends BxDolModule
                 ?? ''
             );
 
+        /*
+         * Barrier 2: template-cache compression.
+         *
+         * Newer armed journals preserve the verified compression
+         * value. Runtime protection must carry and re-verify it
+         * rather than dropping the third control-barrier state.
+         */
+        $bHasCompressionState =
+            array_key_exists(
+                'template_cache_compress_value',
+                $aOriginal
+            );
+
+        $sExpectedCompression = '';
+
+        if ($bHasCompressionState) {
+            if (
+                !array_key_exists(
+                    'compression_value',
+                    $aArmed
+                )
+            ) {
+                $aResult['error'] =
+                    'Armed template-compression control-barrier state is missing.';
+
+                return $aResult;
+            }
+
+            $sExpectedCompression =
+                (string)$aArmed[
+                    'compression_value'
+                ];
+        }
+
         $aOriginalGenerator =
             $aOriginal['generator']
             ?? array();
@@ -5019,6 +21183,11 @@ class MyUnaDoctorModule extends BxDolModule
 
             'generator_schedule' =>
                 $sExpectedSchedule,
+
+            'compression_value' =>
+                $bHasCompressionState
+                    ? $sExpectedCompression
+                    : null,
 
             'runtime_moved' =>
                 false,
@@ -5104,6 +21273,22 @@ class MyUnaDoctorModule extends BxDolModule
                 throw new RuntimeException(
                     'Soft-maintenance state changed immediately before runtime protection.'
                 );
+            }
+
+            if ($bHasCompressionState) {
+                $sLiveCompression =
+                    (string)getParam(
+                        'enable_mix_template_cache'
+                    );
+
+                if (
+                    $sLiveCompression
+                    !== $sExpectedCompression
+                ) {
+                    throw new RuntimeException(
+                        'Template-cache compression state changed immediately before runtime protection.'
+                    );
+                }
             }
 
             $aLiveCron =
@@ -5614,6 +21799,539 @@ class MyUnaDoctorModule extends BxDolModule
     }
 
 
+
+    /**
+     * Commit a fully verified runtime merge without restoring the
+     * protected original runtime tree.
+     *
+     * The live merged runtime remains authoritative. The protected
+     * original runtime is retained as recovery evidence.
+     *
+     * This method performs no maintenance/compression/generator
+     * restoration. It only creates the verified armed state required
+     * by restoreArmedRepair().
+     */
+    public function commitSuccessfulRuntimeMerge(
+        $iJournalId,
+        $iExpectedLedgerEvents
+    ) {
+        $iJournalId =
+            (int)$iJournalId;
+
+        $iExpectedLedgerEvents =
+            (int)$iExpectedLedgerEvents;
+
+        $aResult = array(
+            'ok' => false,
+            'committed' => false,
+            'changes_applied' => false,
+            'journal_id' => $iJournalId,
+            'error' => '',
+        );
+
+        if (
+            PHP_SAPI === 'cli'
+            || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST'
+        ) {
+            $aResult['error'] =
+                'Successful runtime-merge commit is allowed only from an authenticated web POST.';
+
+            return $aResult;
+        }
+
+        if (!isAdmin()) {
+            $aResult['error'] =
+                'Administrator authorization is required.';
+
+            return $aResult;
+        }
+
+        if (
+            $iJournalId <= 0
+            || $iExpectedLedgerEvents < 0
+        ) {
+            $aResult['error'] =
+                'Runtime-merge commit parameters are invalid.';
+
+            return $aResult;
+        }
+
+        /*
+         * Fresh authoritative whole-manifest proof.
+         */
+        $aState =
+            $this->getRuntimeMergeNextBatchState(
+                $iJournalId
+            );
+
+        if (empty($aState['ok'])) {
+            $aResult['error'] =
+                'Runtime-merge completion could not be independently verified: '
+                . (
+                    $aState['error']
+                    ?? 'unknown verification failure'
+                );
+
+            return $aResult;
+        }
+
+        $iEventCount =
+            (int)(
+                $aState['event_count']
+                ?? -1
+            );
+
+        $iJournalEventCount =
+            (int)(
+                $aState['journal_event_count']
+                ?? -2
+            );
+
+        $iInstalled =
+            (int)(
+                $aState['installed_count']
+                ?? -1
+            );
+
+        $iPassive =
+            (int)(
+                $aState['passive_count']
+                ?? -1
+            );
+
+        $iManifest =
+            (int)(
+                $aState['manifest_count']
+                ?? -1
+            );
+
+        $iNextIndex =
+            (int)(
+                $aState['next_start_index']
+                ?? -1
+            );
+
+        if (
+            empty($aState['complete'])
+            || (int)(
+                $aState['unjournaled_events']
+                ?? -1
+            ) !== 0
+            || $iEventCount !== $iJournalEventCount
+            || $iEventCount !== $iExpectedLedgerEvents
+            || $iManifest <= 0
+            || $iInstalled !== $iManifest
+            || $iPassive !== 0
+            || $iNextIndex !== $iManifest
+        ) {
+            $aResult['error'] =
+                'Runtime-merge commit refused because the whole-manifest state is not an exact synchronized 100% completion checkpoint.';
+
+            return $aResult;
+        }
+
+        $aJournal =
+            $this->_oDb->getRow(
+                "SELECT *
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array(
+                    $iJournalId
+                )
+            );
+
+        if (empty($aJournal)) {
+            $aResult['error'] =
+                'Repair journal was not found.';
+
+            return $aResult;
+        }
+
+        $aOriginal =
+            json_decode(
+                (string)(
+                    $aJournal[
+                        'original_state_json'
+                    ]
+                    ?? ''
+                ),
+                true
+            );
+
+        $aCurrent =
+            json_decode(
+                (string)(
+                    $aJournal[
+                        'result_json'
+                    ]
+                    ?? ''
+                ),
+                true
+            );
+
+        if (
+            (string)(
+                $aJournal['status']
+                ?? ''
+            ) !== 'runtime_merging'
+            || !is_array($aOriginal)
+            || !is_array($aCurrent)
+            || (
+                $aCurrent['phase']
+                ?? ''
+            ) !== 'runtime_merging'
+            || empty(
+                $aCurrent[
+                    'runtime_moved'
+                ]
+            )
+        ) {
+            $aResult['error'] =
+                'Runtime-merge journal is not at the exact protected merging state required for a successful commit.';
+
+            return $aResult;
+        }
+
+        /*
+         * Barrier values that restoreArmedRepair() requires.
+         */
+        $sMaintenance =
+            (string)(
+                $aCurrent[
+                    'maintenance_value'
+                ]
+                ?? ''
+            );
+
+        $sGeneratorSchedule =
+            (string)(
+                $aCurrent[
+                    'generator_schedule'
+                ]
+                ?? ''
+            );
+
+        $iGeneratorId =
+            (int)(
+                $aCurrent[
+                    'generator_id'
+                ]
+                ?? 0
+            );
+
+        $aGenerator =
+            $aOriginal[
+                'generator'
+            ]
+            ?? array();
+
+        $iOriginalGeneratorId =
+            (int)(
+                $aGenerator['id']
+                ?? 0
+            );
+
+        if (
+            $sMaintenance === ''
+            || $sGeneratorSchedule === ''
+            || $iGeneratorId <= 0
+            || $iOriginalGeneratorId <= 0
+            || $iGeneratorId !== $iOriginalGeneratorId
+        ) {
+            $aResult['error'] =
+                'Runtime-merge completion is missing the protected armed-state barrier data required for final restoration.';
+
+            return $aResult;
+        }
+
+        /*
+         * Independently prove the live protection barrier has not
+         * changed before committing the successful runtime.
+         */
+        $sLiveMaintenance =
+            (string)$this->_oDb->getOne(
+                "SELECT `value`
+                 FROM `sys_options`
+                 WHERE `name` = ?
+                 LIMIT 1",
+                array(
+                    'sys_maintenance_mode'
+                )
+            );
+
+        if (
+            $sLiveMaintenance
+            !== $sMaintenance
+        ) {
+            $aResult['error'] =
+                'Soft-maintenance state changed before successful runtime commit. Commit refused.';
+
+            return $aResult;
+        }
+
+        $bHasCompressionState =
+            array_key_exists(
+                'template_cache_compress_value',
+                $aOriginal
+            );
+
+        $sCompression = '';
+
+        if ($bHasCompressionState) {
+            if (
+                !array_key_exists(
+                    'compression_value',
+                    $aCurrent
+                )
+            ) {
+                $aResult['error'] =
+                    'Protected compression state is missing from the completed runtime-merge journal.';
+
+                return $aResult;
+            }
+
+            $sCompression =
+                (string)$aCurrent[
+                    'compression_value'
+                ];
+
+            $sLiveCompression =
+                (string)$this->_oDb->getOne(
+                    "SELECT `value`
+                     FROM `sys_options`
+                     WHERE `name` = ?
+                     LIMIT 1",
+                    array(
+                        'sys_template_cache_compress_enable'
+                    )
+                );
+
+            if (
+                $sLiveCompression
+                !== $sCompression
+            ) {
+                $aResult['error'] =
+                    'Template-cache compression state changed before successful runtime commit. Commit refused.';
+
+                return $aResult;
+            }
+        }
+
+        $aLiveCron =
+            $this->_oDb->getRow(
+                "SELECT *
+                 FROM `sys_cron_jobs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array(
+                    $iGeneratorId
+                )
+            );
+
+        $bCronExact =
+            !empty($aLiveCron)
+            && (string)(
+                $aLiveCron['name']
+                ?? ''
+            ) === (string)(
+                $aGenerator['name']
+                ?? ''
+            )
+            && (string)(
+                $aLiveCron['class']
+                ?? ''
+            ) === (string)(
+                $aGenerator['class']
+                ?? ''
+            )
+            && (string)(
+                $aLiveCron['file']
+                ?? ''
+            ) === (string)(
+                $aGenerator['file']
+                ?? ''
+            )
+            && (string)(
+                $aLiveCron['service_call']
+                ?? ''
+            ) === (string)(
+                $aGenerator['service_call']
+                ?? ''
+            )
+            && (string)(
+                $aLiveCron['time']
+                ?? ''
+            ) === $sGeneratorSchedule;
+
+        if (!$bCronExact) {
+            $aResult['error'] =
+                'Generator state changed before successful runtime commit. Commit refused.';
+
+            return $aResult;
+        }
+
+        /*
+         * Preserve all durable runtime-merge evidence.
+         *
+         * runtime_moved remains true here because the protected old
+         * runtime is deliberately retained. restoreArmedRepair()
+         * does not restore or remove that tree.
+         */
+        $aArmed =
+            $aCurrent;
+
+        $aArmed['phase'] =
+            'armed';
+
+        $aArmed['changes_applied'] =
+            true;
+
+        $aArmed['runtime_moved'] =
+            true;
+
+        $aArmed[
+            'successful_runtime_merge'
+        ] = array(
+            'committed' =>
+                true,
+
+            'committed_at' =>
+                time(),
+
+            'manifest_count' =>
+                $iManifest,
+
+            'installed_count' =>
+                $iInstalled,
+
+            'ledger_events' =>
+                $iEventCount,
+
+            'protected_runtime_preserved' =>
+                true,
+        );
+
+        $encode =
+            static function ($value) {
+                $json =
+                    json_encode(
+                        $value,
+                        JSON_UNESCAPED_SLASHES
+                        | JSON_UNESCAPED_UNICODE
+                        | JSON_INVALID_UTF8_SUBSTITUTE
+                    );
+
+                return $json === false
+                    ? '{}'
+                    : $json;
+            };
+
+        try {
+            $this->requireRepairJournalUpdate(
+                $iJournalId,
+                array(
+                    'status' =>
+                        'armed',
+
+                    'result_json' =>
+                        $encode(
+                            $aArmed
+                        ),
+
+                    'error_text' =>
+                        '',
+                )
+            );
+        } catch (Throwable $e) {
+            $aResult['error'] =
+                'Successful runtime merge was verified but the journal could not be committed to armed state: '
+                . $e->getMessage();
+
+            return $aResult;
+        }
+
+        /*
+         * Independent DB reread. Do not trust the preceding write.
+         */
+        $aVerify =
+            $this->_oDb->getRow(
+                "SELECT `status`, `result_json`
+                 FROM `my_una_doctor_repairs`
+                 WHERE `id` = ?
+                 LIMIT 1",
+                array(
+                    $iJournalId
+                )
+            );
+
+        $aVerifyState =
+            json_decode(
+                (string)(
+                    $aVerify[
+                        'result_json'
+                    ]
+                    ?? ''
+                ),
+                true
+            );
+
+        if (
+            empty($aVerify)
+            || (string)(
+                $aVerify['status']
+                ?? ''
+            ) !== 'armed'
+            || !is_array(
+                $aVerifyState
+            )
+            || (
+                $aVerifyState['phase']
+                ?? ''
+            ) !== 'armed'
+            || empty(
+                $aVerifyState[
+                    'successful_runtime_merge'
+                ]['committed']
+            )
+            || (int)(
+                $aVerifyState[
+                    'successful_runtime_merge'
+                ]['manifest_count']
+                ?? -1
+            ) !== $iManifest
+            || (int)(
+                $aVerifyState[
+                    'successful_runtime_merge'
+                ]['ledger_events']
+                ?? -1
+            ) !== $iEventCount
+        ) {
+            $aResult['error'] =
+                'Successful runtime-merge commit could not be independently verified after the journal transition.';
+
+            return $aResult;
+        }
+
+        $aResult['ok'] =
+            true;
+
+        $aResult['committed'] =
+            true;
+
+        $aResult['changes_applied'] =
+            true;
+
+        $aResult['manifest_count'] =
+            $iManifest;
+
+        $aResult['ledger_events'] =
+            $iEventCount;
+
+        return $aResult;
+    }
+
+
     public function restoreProtectedRuntime($iJournalId)
     {
         $iJournalId = (int)$iJournalId;
@@ -5749,6 +22467,45 @@ class MyUnaDoctorModule extends BxDolModule
                 $aProtected['generator_schedule']
                 ?? ''
             );
+
+
+        /*
+         * Runtime restore compression barrier.
+         *
+         * New runtime-protection journals carry the verified
+         * template-cache compression value. Preserve backward
+         * compatibility with older protected journals that
+         * predate this field.
+         */
+        $bHasProtectedCompression =
+            array_key_exists(
+                'compression_value',
+                $aProtected
+            );
+
+        $sExpectedCompression =
+            $bHasProtectedCompression
+                ? (string)$aProtected[
+                    'compression_value'
+                ]
+                : '';
+
+        if ($bHasProtectedCompression) {
+            $sLiveCompression =
+                (string)getParam(
+                    'enable_mix_template_cache'
+                );
+
+            if (
+                $sLiveCompression
+                !== $sExpectedCompression
+            ) {
+                $aResult['error'] =
+                    'Template-cache compression control barrier no longer matches the protected journal.';
+
+                return $aResult;
+            }
+        }
 
         if (
             $iCronId <= 0
@@ -6009,6 +22766,13 @@ class MyUnaDoctorModule extends BxDolModule
                 ),
             );
 
+            if ($bHasProtectedCompression) {
+                $aRecoveredArmed[
+                    'compression_value'
+                ] =
+                    $sExpectedCompression;
+            }
+
             $this->requireRepairJournalUpdate(
                 $iJournalId,
                 array(
@@ -6136,6 +22900,13 @@ class MyUnaDoctorModule extends BxDolModule
                 ),
             );
 
+            if ($bHasProtectedCompression) {
+                $aRecoveredArmed[
+                    'compression_value'
+                ] =
+                    $sExpectedCompression;
+            }
+
             $this->requireRepairJournalUpdate(
                 $iJournalId,
                 array(
@@ -6254,6 +23025,13 @@ class MyUnaDoctorModule extends BxDolModule
                         ),
                 ),
             );
+
+            if ($bHasProtectedCompression) {
+                $aArmedResult[
+                    'compression_value'
+                ] =
+                    $sExpectedCompression;
+            }
 
             $this->requireRepairJournalUpdate(
                 $iJournalId,
@@ -6383,6 +23161,11 @@ class MyUnaDoctorModule extends BxDolModule
             true
         );
 
+        $aPlannedState = json_decode(
+            (string)$aJournal['planned_state_json'],
+            true
+        );
+
         if (
             !is_array($aOriginalState)
             || !is_array($aArmedResult)
@@ -6439,21 +23222,70 @@ class MyUnaDoctorModule extends BxDolModule
 
         if ($bHasCompressionState) {
             if (
-                !array_key_exists(
+                array_key_exists(
                     'compression_value',
                     $aArmedResult
                 )
             ) {
-                $aResult['error'] =
-                    'Journaled Barrier 2 compression state is missing.';
+                $sExpectedArmedCompression =
+                    (string)$aArmedResult[
+                        'compression_value'
+                    ];
+            } else {
+                /*
+                 * Legacy armed-journal compression recovery.
+                 *
+                 * Older runtime restore code could return an
+                 * otherwise valid journal to armed without
+                 * carrying compression_value forward.
+                 *
+                 * Never infer the missing value from the original
+                 * setting. Require the durable planned target and
+                 * independently verify that the live option still
+                 * equals that target.
+                 */
+                if (
+                    !is_array($aPlannedState)
+                    || !array_key_exists(
+                        'template_cache_compress_target',
+                        $aPlannedState
+                    )
+                ) {
+                    $aResult['error'] =
+                        'Journaled Barrier 2 compression state is missing and no verified planned compression target is available.';
 
-                return $aResult;
+                    return $aResult;
+                }
+
+                $sPlannedCompression =
+                    (string)$aPlannedState[
+                        'template_cache_compress_target'
+                    ];
+
+                $sLiveLegacyCompression =
+                    (string)$this->_oDb->getOne(
+                        "SELECT `value`
+                         FROM `sys_options`
+                         WHERE `name` = ?
+                         LIMIT 1",
+                        array(
+                            'sys_template_cache_compress_enable'
+                        )
+                    );
+
+                if (
+                    $sLiveLegacyCompression
+                    !== $sPlannedCompression
+                ) {
+                    $aResult['error'] =
+                        'Legacy armed journal is missing its compression state and the live compression value does not match the approved planned target. Restore refused.';
+
+                    return $aResult;
+                }
+
+                $sExpectedArmedCompression =
+                    $sPlannedCompression;
             }
-
-            $sExpectedArmedCompression =
-                (string)$aArmedResult[
-                    'compression_value'
-                ];
         }
 
         if (
@@ -6610,6 +23442,29 @@ class MyUnaDoctorModule extends BxDolModule
                     array('sys_maintenance_mode')
                 );
 
+            $sExpectedOriginalMaintenanceHtml =
+                array_key_exists(
+                    'soft_maintenance_html_value',
+                    $aOriginalState
+                )
+                    ? (string)$aOriginalState[
+                        'soft_maintenance_html_value'
+                    ]
+                    : null;
+
+            $sVerifyMaintenanceHtml =
+                $sExpectedOriginalMaintenanceHtml !== null
+                    ? (string)$this->_oDb->getOne(
+                        "SELECT `value`
+                         FROM `sys_options`
+                         WHERE `name` = ?
+                         LIMIT 1",
+                        array(
+                            'sys_maintenance_mode_html'
+                        )
+                    )
+                    : null;
+
             $sExpectedOriginalCompression = '';
 
             $sVerifyCompression = '';
@@ -6645,6 +23500,11 @@ class MyUnaDoctorModule extends BxDolModule
                 $sVerifyMaintenance
                     === $sExpectedOriginalMaintenance
                 && (
+                    $sExpectedOriginalMaintenanceHtml === null
+                    || $sVerifyMaintenanceHtml
+                        === $sExpectedOriginalMaintenanceHtml
+                )
+                && (
                     !$bHasCompressionState
                     || $sVerifyCompression
                         === $sExpectedOriginalCompression
@@ -6672,6 +23532,13 @@ class MyUnaDoctorModule extends BxDolModule
                 'changes_applied' => true,
                 'maintenance_value' =>
                     $sVerifyMaintenance,
+                'maintenance_html_sha256' =>
+                    $sVerifyMaintenanceHtml === null
+                        ? null
+                        : hash(
+                            'sha256',
+                            $sVerifyMaintenanceHtml
+                        ),
                 'compression_value' =>
                     $bHasCompressionState
                         ? $sVerifyCompression
@@ -6682,6 +23549,41 @@ class MyUnaDoctorModule extends BxDolModule
                     (string)$aVerifyCron['time'],
                 'runtime_moved' => false,
             );
+
+            if (
+                !empty(
+                    $aArmedResult[
+                        'successful_runtime_merge'
+                    ]
+                )
+                && is_array(
+                    $aArmedResult[
+                        'successful_runtime_merge'
+                    ]
+                )
+            ) {
+                $aRestoredResult[
+                    'successful_runtime_merge'
+                ] =
+                    $aArmedResult[
+                        'successful_runtime_merge'
+                    ];
+
+                $aRestoredResult[
+                    'successful_runtime_merge'
+                ][
+                    'site_state_restored'
+                ] =
+                    true;
+
+                $aRestoredResult[
+                    'successful_runtime_merge'
+                ][
+                    'site_state_restored_at'
+                ] =
+                    time();
+            }
+
 
             $this->requireRepairJournalUpdate(
                 $iJournalId,
@@ -6841,6 +23743,23 @@ class MyUnaDoctorModule extends BxDolModule
 
         if (
             !array_key_exists(
+                'soft_maintenance_html_value',
+                $aOriginalState
+            )
+        ) {
+            $aResult['error'] =
+                'The approved Arm Plan does not contain the original soft-maintenance HTML state.';
+
+            return $aResult;
+        }
+
+        $sOriginalMaintenanceHtml =
+            (string)$aOriginalState[
+                'soft_maintenance_html_value'
+            ];
+
+        if (
+            !array_key_exists(
                 'template_cache_compress_value',
                 $aOriginalState
             )
@@ -6872,6 +23791,27 @@ class MyUnaDoctorModule extends BxDolModule
         if ($sLiveMaintenance !== $sOriginalMaintenance) {
             $aResult['error'] =
                 'Soft-maintenance state changed after approval.';
+
+            return $aResult;
+        }
+
+        $sLiveMaintenanceHtml =
+            (string)$this->_oDb->getOne(
+                "SELECT `value`
+                 FROM `sys_options`
+                 WHERE `name` = ?
+                 LIMIT 1",
+                array(
+                    'sys_maintenance_mode_html'
+                )
+            );
+
+        if (
+            $sLiveMaintenanceHtml
+            !== $sOriginalMaintenanceHtml
+        ) {
+            $aResult['error'] =
+                'Soft-maintenance HTML changed after approval.';
 
             return $aResult;
         }
@@ -6954,6 +23894,7 @@ class MyUnaDoctorModule extends BxDolModule
                    'armed',
                    'runtime_protecting',
                    'runtime_protected',
+                   'runtime_merging',
                    'runtime_restoring',
                    'runtime_rollback_failed',
                    'restoring',
@@ -6972,6 +23913,70 @@ class MyUnaDoctorModule extends BxDolModule
             return $aResult;
         }
 
+        $iMaintenanceEstimateSeconds =
+            2 * 60 * 60;
+
+        $iMaintenanceStartedAt = time();
+        $iMaintenanceEtaAt =
+            $iMaintenanceStartedAt
+            + $iMaintenanceEstimateSeconds;
+
+        $iDoctorMaintenancePageOptions =
+            (int)$this->_oDb->getOne(
+                "SELECT COUNT(*)
+                 FROM `sys_options`
+                 WHERE `name` = ?",
+                array(
+                    'my_una_doctor_use_maintenance_page'
+                )
+            );
+
+        $bUseDoctorMaintenancePage =
+            $iDoctorMaintenancePageOptions === 0
+            || (string)getParam(
+                'my_una_doctor_use_maintenance_page'
+            ) === 'on';
+
+        $bDoctorMaintenanceLanding =
+            $bUseDoctorMaintenancePage
+            && $sOriginalMaintenance === '';
+
+        $sExpectedMaintenanceHtml =
+            $sOriginalMaintenanceHtml;
+
+        if ($bDoctorMaintenanceLanding) {
+            require_once(
+                BX_DIRECTORY_PATH_MODULES
+                . $this->_aModule['path']
+                . 'classes/MyUnaDoctorMaintenance.php'
+            );
+
+            $sExpectedMaintenanceHtml =
+                MyUnaDoctorMaintenance::buildPage(
+                    $iMaintenanceStartedAt,
+                    $iMaintenanceEtaAt
+                );
+
+            if (
+                $sExpectedMaintenanceHtml === ''
+                || strpos(
+                    $sExpectedMaintenanceHtml,
+                    'id="mud-maintenance"'
+                ) === false
+            ) {
+                $aResult['error'] =
+                    'Doctor maintenance landing page could not be generated safely.';
+
+                return $aResult;
+            }
+        }
+
+        $sExpectedMaintenanceHtmlSha256 =
+            hash(
+                'sha256',
+                $sExpectedMaintenanceHtml
+            );
+
         $aPlannedState = array(
             'template_cache_compress_target' =>
                 '',
@@ -6980,6 +23985,19 @@ class MyUnaDoctorModule extends BxDolModule
                 $sOriginalMaintenance !== ''
                     ? $sOriginalMaintenance
                     : 'on',
+
+            'maintenance_landing' => array(
+                'doctor_owned' =>
+                    $bDoctorMaintenanceLanding,
+                'started_at' =>
+                    $iMaintenanceStartedAt,
+                'eta_at' =>
+                    $iMaintenanceEtaAt,
+                'estimate_seconds' =>
+                    $iMaintenanceEstimateSeconds,
+                'html_sha256' =>
+                    $sExpectedMaintenanceHtmlSha256,
+            ),
 
             'generator' => array(
                 'id' => $iCronId,
@@ -7092,6 +24110,7 @@ class MyUnaDoctorModule extends BxDolModule
         };
 
         $bCompressionMutationAttempted = false;
+        $bMaintenanceHtmlMutationAttempted = false;
         $bMaintenanceMutationAttempted = false;
         $bCronMutationAttempted = false;
 
@@ -7166,6 +24185,66 @@ class MyUnaDoctorModule extends BxDolModule
             );
 
             /*
+             * Stage Doctor's self-contained public landing page
+             * only when Doctor itself is about to activate soft
+             * maintenance. Existing administrator maintenance is
+             * treated as externally owned and is not replaced.
+             */
+            if ($bDoctorMaintenanceLanding) {
+                $bMaintenanceHtmlMutationAttempted =
+                    true;
+
+                setParam(
+                    'sys_maintenance_mode_html',
+                    $sExpectedMaintenanceHtml
+                );
+            }
+
+            $sVerifyMaintenanceHtml =
+                (string)$this->_oDb->getOne(
+                    "SELECT `value`
+                     FROM `sys_options`
+                     WHERE `name` = ?
+                     LIMIT 1",
+                    array(
+                        'sys_maintenance_mode_html'
+                    )
+                );
+
+            if (
+                $sVerifyMaintenanceHtml
+                !== $sExpectedMaintenanceHtml
+            ) {
+                throw new RuntimeException(
+                    'Doctor maintenance landing page could not be staged and verified.'
+                );
+            }
+
+            $this->requireRepairJournalUpdate(
+                $iJournalId,
+                array(
+                    'status' => 'arming',
+                    'result_json' => $encode(
+                        array(
+                            'phase' =>
+                                'maintenance_page_staged',
+                            'maintenance_html_sha256' =>
+                                hash(
+                                    'sha256',
+                                    $sVerifyMaintenanceHtml
+                                ),
+                            'maintenance_started_at' =>
+                                $iMaintenanceStartedAt,
+                            'maintenance_eta_at' =>
+                                $iMaintenanceEtaAt,
+                            'changes_applied' =>
+                                $bMaintenanceHtmlMutationAttempted,
+                        )
+                    ),
+                )
+            );
+
+            /*
              * Enable soft maintenance only if it was originally
              * disabled. Preserve any existing non-empty value.
              */
@@ -7212,8 +24291,18 @@ class MyUnaDoctorModule extends BxDolModule
                                 'maintenance_enabled',
                             'maintenance_value' =>
                                 $sVerifyMaintenance,
+                            'maintenance_html_sha256' =>
+                                hash(
+                                    'sha256',
+                                    $sVerifyMaintenanceHtml
+                                ),
+                            'maintenance_started_at' =>
+                                $iMaintenanceStartedAt,
+                            'maintenance_eta_at' =>
+                                $iMaintenanceEtaAt,
                             'changes_applied' =>
-                                $bMaintenanceMutationAttempted,
+                                $bMaintenanceMutationAttempted
+                                || $bMaintenanceHtmlMutationAttempted,
                         )
                     ),
                 )
@@ -7331,6 +24420,17 @@ class MyUnaDoctorModule extends BxDolModule
                     array('sys_maintenance_mode')
                 );
 
+            $sFinalMaintenanceHtml =
+                (string)$this->_oDb->getOne(
+                    "SELECT `value`
+                     FROM `sys_options`
+                     WHERE `name` = ?
+                     LIMIT 1",
+                    array(
+                        'sys_maintenance_mode_html'
+                    )
+                );
+
             $sFinalCompression =
                 (string)$this->_oDb->getOne(
                     "SELECT `value`
@@ -7355,6 +24455,8 @@ class MyUnaDoctorModule extends BxDolModule
                 $sFinalCompression !== ''
                 || $sFinalMaintenance
                     !== $sExpectedMaintenance
+                || $sFinalMaintenanceHtml
+                    !== $sExpectedMaintenanceHtml
                 || empty($aFinalCron)
                 || (string)$aFinalCron['time']
                     !== $sPauseSchedule
@@ -7377,6 +24479,15 @@ class MyUnaDoctorModule extends BxDolModule
                 'changes_applied' => true,
                 'maintenance_value' =>
                     $sFinalMaintenance,
+                'maintenance_html_sha256' =>
+                    hash(
+                        'sha256',
+                        $sFinalMaintenanceHtml
+                    ),
+                'maintenance_started_at' =>
+                    $iMaintenanceStartedAt,
+                'maintenance_eta_at' =>
+                    $iMaintenanceEtaAt,
                 'compression_value' =>
                     $sFinalCompression,
                 'generator_id' =>

@@ -9,4 +9,28 @@
     <string name="_my_una_doctor_logs"><![CDATA[Logs]]></string>
     <string name="_my_una_doctor_history"><![CDATA[History]]></string>
     <string name="_my_una_doctor_settings"><![CDATA[Settings]]></string>
+    <string name="_my_una_doctor_opt_show_activity"><![CDATA[Show activity graphic during protected operations]]></string>
+    <string name="_my_una_doctor_opt_show_activity_info"><![CDATA[Show Doctor's animated working indicator while a protected operation is being processed.]]></string>
+    <string name="_my_una_doctor_opt_expand_technical_details"><![CDATA[Open Technical Details automatically]]></string>
+    <string name="_my_una_doctor_opt_expand_technical_details_info"><![CDATA[Open technical evidence and diagnostic details by default instead of leaving them collapsed.]]></string>
+    <string name="_my_una_doctor_opt_work_cycle_size"><![CDATA[Protected work-cycle size]]></string>
+    <string name="_my_una_doctor_opt_work_cycle_size_info"><![CDATA[Choose how many runtime files Doctor may process in one protected browser work cycle. Hard internal safety limits still apply.]]></string>
+
+    <string name="_my_una_doctor_opt_maintenance_show_header"><![CDATA[Show maintenance page header]]></string>
+    <string name="_my_una_doctor_opt_maintenance_show_header_info"><![CDATA[Show the My UNA Doctor branding and trust header on the public maintenance page.]]></string>
+    <string name="_my_una_doctor_opt_maintenance_show_footer"><![CDATA[Show maintenance page footer]]></string>
+    <string name="_my_una_doctor_opt_maintenance_show_footer_info"><![CDATA[Show the closing My UNA Doctor maintenance footer.]]></string>
+    <string name="_my_una_doctor_opt_maintenance_heading"><![CDATA[Maintenance heading]]></string>
+    <string name="_my_una_doctor_opt_maintenance_heading_info"><![CDATA[Personalize the main heading visitors see while maintenance is active.]]></string>
+    <string name="_my_una_doctor_opt_maintenance_message"><![CDATA[Main maintenance message]]></string>
+    <string name="_my_una_doctor_opt_maintenance_message_info"><![CDATA[Personalize the main message explaining the temporary maintenance period.]]></string>
+    <string name="_my_una_doctor_opt_maintenance_patience"><![CDATA[Patience message]]></string>
+    <string name="_my_una_doctor_opt_maintenance_patience_info"><![CDATA[Message displayed beneath the maintenance countdown.]]></string>
+    <string name="_my_una_doctor_opt_maintenance_return_message"><![CDATA[Return/status message]]></string>
+    <string name="_my_una_doctor_opt_maintenance_return_message_info"><![CDATA[Message shown beneath the countdown while the estimated return time is active.]]></string>
+    <string name="_my_una_doctor_opt_maintenance_footer_message"><![CDATA[Footer message]]></string>
+    <string name="_my_una_doctor_opt_maintenance_footer_message_info"><![CDATA[Personalize the closing message shown in the maintenance page footer.]]></string>
+
+    <string name="_my_una_doctor_opt_use_maintenance_page"><![CDATA[Use My UNA Doctor Page]]></string>
+    <string name="_my_una_doctor_opt_use_maintenance_page_info"><![CDATA[When enabled, Doctor uses its branded maintenance page with video, live server health and personalized text. When disabled, Doctor preserves and uses the site's existing UNA maintenance page.]]></string>
 </resources>

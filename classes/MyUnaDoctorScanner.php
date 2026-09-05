@@ -22,6 +22,20 @@ class MyUnaDoctorScanner
         $iStarted = time();
 
         $this->guarded('system', array($this, 'scanSystem'));
+        $this->guarded(
+            'maintenance',
+            array(
+                $this,
+                'scanMaintenanceUpgradeState'
+            )
+        );
+        $this->guarded(
+            'upgrade_readiness',
+            array(
+                $this,
+                'scanUpgradeReadinessSummary'
+            )
+        );
         $this->guarded('filesystem', array($this, 'scanFilesystem'));
         $this->guarded('database', array($this, 'scanDatabase'));
         $this->guarded('storage', array($this, 'scanStorageMedia'));
@@ -120,6 +134,741 @@ class MyUnaDoctorScanner
         else
             $this->add('system', 'ok', 'Common UNA PHP extensions are available');
     }
+
+
+    /**
+     * Inspect UNA maintenance and upgrade state.
+     *
+     * Diagnostic only. This method never changes maintenance
+     * options, the hard-maintenance file, repair journals,
+     * cron schedules, module files or checksum baselines.
+     */
+    protected function scanMaintenanceUpgradeState()
+    {
+        $sRoot =
+            rtrim(
+                BX_DIRECTORY_PATH_ROOT,
+                DIRECTORY_SEPARATOR
+            )
+            . DIRECTORY_SEPARATOR;
+
+        $sHardFileName =
+            defined('BX_MAINTENANCE_FILE')
+                ? (string)BX_MAINTENANCE_FILE
+                : '.bx_maintenance';
+
+        $sHardFile =
+            $sRoot
+            . $sHardFileName;
+
+        $bHardMaintenance =
+            is_file($sHardFile);
+
+        $iHardMtime = 0;
+        $iHardAge = 0;
+
+        if ($bHardMaintenance) {
+            $iHardMtime =
+                (int)@filemtime(
+                    $sHardFile
+                );
+
+            if ($iHardMtime > 0) {
+                $iHardAge =
+                    max(
+                        0,
+                        time() - $iHardMtime
+                    );
+            }
+        }
+
+        /*
+         * Six hours is deliberately conservative.
+         *
+         * Doctor does not remove a lock based on age. Age only
+         * changes the diagnostic classification and prompts
+         * further investigation.
+         */
+        $iStaleThreshold =
+            6 * 60 * 60;
+
+        $bHardStale =
+            $bHardMaintenance
+            && $iHardAge >= $iStaleThreshold;
+
+        $sSoftValue =
+            (string)getParam(
+                'sys_maintenance_mode'
+            );
+
+        $bSoftMaintenance =
+            !empty($sSoftValue);
+
+        $sSoftHtml =
+            (string)getParam(
+                'sys_maintenance_mode_html'
+            );
+
+        $sFileVersion =
+            defined('BX_DOL_VERSION')
+                ? (string)BX_DOL_VERSION
+                : '';
+
+        $sDatabaseVersion =
+            (string)$this->oDb->getOne(
+                "SELECT `version`
+                 FROM `sys_modules`
+                 WHERE `name` = 'system'
+                 LIMIT 1"
+            );
+
+        $bVersionMismatch =
+            $sFileVersion !== ''
+            && $sDatabaseVersion !== ''
+            && $sFileVersion !==
+                $sDatabaseVersion;
+
+        /*
+         * Upgrade-related log entries are supporting evidence,
+         * never sufficient by themselves to declare a current
+         * failure.
+         */
+        $aUpgradeLogSignals =
+            $this->collectMaintenanceUpgradeLogSignals();
+
+        $iUpgradeLogSignalCount =
+            count($aUpgradeLogSignals);
+
+        /*
+         * Doctor's own durable repair journal is authoritative
+         * evidence that maintenance may be intentional.
+         */
+        $aJournal = array();
+
+        if (
+            is_object($this->oModule)
+            && method_exists(
+                $this->oModule,
+                'getLatestActiveRepairJournal'
+            )
+        ) {
+            try {
+                $aJournal =
+                    $this->oModule
+                        ->getLatestActiveRepairJournal();
+
+                if (!is_array($aJournal))
+                    $aJournal = array();
+
+            } catch (Throwable $e) {
+                $aJournal = array();
+            }
+        }
+
+        $iJournalId =
+            (int)(
+                $aJournal['id']
+                ?? 0
+            );
+
+        $sJournalStatus =
+            (string)(
+                $aJournal['status']
+                ?? ''
+            );
+
+        $sJournalRule =
+            (string)(
+                $aJournal['rule']
+                ?? ''
+            );
+
+        $sJournalModule =
+            (string)(
+                $aJournal['module']
+                ?? ''
+            );
+
+        $aMaintenanceRepairStates = array(
+            'maintenance_enabled',
+            'generator_paused',
+            'armed',
+            'runtime_protecting',
+            'runtime_protected',
+            'runtime_merging',
+            'runtime_restoring',
+            'runtime_rollback_failed',
+            'restoring',
+            'rollback_failed',
+        );
+
+        $bDoctorMaintenanceExpected =
+            $iJournalId > 0
+            && in_array(
+                $sJournalStatus,
+                $aMaintenanceRepairStates,
+                true
+            );
+
+        $aEvidence = array(
+            'state' => 'NORMAL',
+
+            'soft_maintenance_enabled' =>
+                $bSoftMaintenance,
+
+            'soft_maintenance_value' =>
+                $sSoftValue,
+
+            'soft_maintenance_html_bytes' =>
+                strlen($sSoftHtml),
+
+            'hard_maintenance_file' =>
+                $bHardMaintenance,
+
+            'hard_maintenance_path' =>
+                $sHardFile,
+
+            'hard_maintenance_mtime' =>
+                $iHardMtime,
+
+            'hard_maintenance_age_seconds' =>
+                $iHardAge,
+
+            'hard_lock_stale_threshold_seconds' =>
+                $iStaleThreshold,
+
+            'una_files_version' =>
+                $sFileVersion,
+
+            'una_database_version' =>
+                $sDatabaseVersion,
+
+            'una_version_mismatch' =>
+                $bVersionMismatch,
+
+            'upgrade_log_signal_count' =>
+                $iUpgradeLogSignalCount,
+
+            'upgrade_log_signals' =>
+                $aUpgradeLogSignals,
+
+            'doctor_repair_journal_id' =>
+                $iJournalId,
+
+            'doctor_repair_status' =>
+                $sJournalStatus,
+
+            'doctor_repair_rule' =>
+                $sJournalRule,
+
+            'doctor_repair_module' =>
+                $sJournalModule,
+
+            'changes_applied' => false,
+        );
+
+        /*
+         * Strongest signal:
+         * hard maintenance + application/DB version mismatch.
+         *
+         * Doctor does not assert that an upgrade definitely
+         * failed. It identifies the combination as requiring
+         * investigation.
+         */
+        if (
+            $bHardMaintenance
+            && $bVersionMismatch
+        ) {
+            $aEvidence['state'] =
+                'POSSIBLE_INTERRUPTED_UPGRADE';
+
+            $aEvidence['correlation_reason'] =
+                'hard_maintenance_and_version_mismatch';
+
+            $this->add(
+                'maintenance',
+                'critical',
+                'Possible interrupted UNA upgrade',
+                'UNA hard maintenance is active while the UNA application files and database report different versions. This is strong evidence of an incomplete or interrupted upgrade state. Doctor will not remove the maintenance lock automatically.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        /*
+         * An unexpected hard lock during Doctor's own protected
+         * repair is not treated as normal Doctor maintenance.
+         */
+        if (
+            $bHardMaintenance
+            && $bDoctorMaintenanceExpected
+        ) {
+            $aEvidence['state'] =
+                'HARD_MAINTENANCE';
+
+            $this->add(
+                'maintenance',
+                'warning',
+                'Hard UNA maintenance appeared during a Doctor protected repair',
+                'Doctor has an active repair journal, but a hard .bx_maintenance lock is also present. Doctor protected repairs use controlled soft maintenance and do not assume this hard lock is safe to remove.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        /*
+         * Soft maintenance alone is not an upgrade failure.
+         * However, unexplained soft maintenance together with
+         * UNA version drift and upgrade-log evidence is a much
+         * stronger interrupted-upgrade signal.
+         *
+         * Doctor-owned protected repair maintenance is excluded.
+         */
+        if (
+            $bSoftMaintenance
+            && !$bDoctorMaintenanceExpected
+            && $bVersionMismatch
+            && $iUpgradeLogSignalCount > 0
+        ) {
+            $aEvidence['state'] =
+                'POSSIBLE_INTERRUPTED_UPGRADE';
+
+            $aEvidence['correlation_reason'] =
+                'soft_maintenance_version_mismatch_and_upgrade_logs';
+
+            $this->add(
+                'maintenance',
+                'critical',
+                'Possible interrupted UNA upgrade',
+                'UNA soft maintenance is active, the UNA application and database versions do not agree, and recent module-upgrade log signals were found. Doctor detected the correlated condition but made no changes.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        if ($bHardStale) {
+            $aEvidence['state'] =
+                'STALE_HARD_LOCK';
+
+            if ($iUpgradeLogSignalCount > 0) {
+                $aEvidence['correlation_reason'] =
+                    'stale_hard_maintenance_with_upgrade_log_evidence';
+
+                $sDetail =
+                    'The .bx_maintenance file has remained present for at least six hours and Doctor also found upgrade-related module log evidence. The log evidence may be historical, so Doctor is treating this as a warning rather than proof of an interrupted upgrade. Confirm that no upgrade or administrator maintenance operation is still running before removing the lock.';
+            } else {
+                $aEvidence['correlation_reason'] =
+                    'stale_hard_maintenance_only';
+
+                $sDetail =
+                    'The .bx_maintenance file has remained present for at least six hours. Doctor detected the condition but made no change. Confirm that no upgrade or administrator maintenance operation is still running before removing it.';
+            }
+
+            $this->add(
+                'maintenance',
+                'warning',
+                'UNA hard maintenance lock may be stale',
+                $sDetail,
+                $aEvidence
+            );
+
+            return;
+        }
+
+        if ($bHardMaintenance) {
+            $aEvidence['state'] =
+                'HARD_MAINTENANCE';
+
+            $this->add(
+                'maintenance',
+                'warning',
+                'UNA hard maintenance mode is active',
+                'The root .bx_maintenance file is present. Doctor will not remove or modify the lock automatically.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        /*
+         * Doctor-controlled repair maintenance must be
+         * separated from an unexplained maintenance condition.
+         */
+        if ($bDoctorMaintenanceExpected) {
+
+            if ($bSoftMaintenance) {
+                $aEvidence['state'] =
+                    'DOCTOR_PROTECTED_REPAIR';
+
+                $this->add(
+                    'maintenance',
+                    'info',
+                    'Doctor protected repair maintenance is active',
+                    'The active Doctor repair journal and UNA soft-maintenance state agree. This is an intentional protected repair condition, not an abandoned upgrade lock.',
+                    $aEvidence
+                );
+
+                return;
+            }
+
+            $aEvidence['state'] =
+                'DOCTOR_PROTECTED_REPAIR';
+
+            $this->add(
+                'maintenance',
+                'warning',
+                'Doctor repair journal and maintenance state do not agree',
+                'Doctor has an active repair journal whose current phase normally requires protected soft maintenance, but UNA soft maintenance is not enabled. Review the repair journal before continuing the repair.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        if ($bSoftMaintenance) {
+            $aEvidence['state'] =
+                'SOFT_MAINTENANCE';
+
+            $this->add(
+                'maintenance',
+                'info',
+                'UNA soft maintenance mode is active',
+                'Public visitors are intentionally being held by UNA soft maintenance. Studio operators and permitted upgrade activity can remain accessible. Doctor made no change.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        /*
+         * A maintenance page may remain configured while the
+         * switch is off. That is configuration, not an active
+         * outage.
+         */
+        if ($sSoftHtml !== '') {
+            $aEvidence['state'] =
+                'NORMAL';
+
+            $this->add(
+                'maintenance',
+                'ok',
+                'UNA maintenance mode is off',
+                'No soft or hard maintenance mode is active. A maintenance HTML template is configured but is not currently being shown.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        $this->add(
+            'maintenance',
+            'ok',
+            'UNA maintenance and upgrade state is normal',
+            'No UNA soft maintenance, hard maintenance lock or Doctor protected repair state is active.',
+            $aEvidence
+        );
+    }
+
+
+    /**
+     * Return a small bounded set of recent upgrade-related
+     * sys_modules.log signals.
+     *
+     * The log is supporting evidence only. A matching line does
+     * not independently create an upgrade-failure diagnosis.
+     */
+    /**
+     * Summarize maintenance/upgrade-state readiness.
+     *
+     * This is deliberately separate from module checksum/update
+     * eligibility. It changes no files, options, journals or locks.
+     */
+    protected function scanUpgradeReadinessSummary()
+    {
+        $sHardFile =
+            rtrim(
+                BX_DIRECTORY_PATH_ROOT,
+                DIRECTORY_SEPARATOR
+            )
+            . DIRECTORY_SEPARATOR
+            . (
+                defined('BX_MAINTENANCE_FILE')
+                    ? BX_MAINTENANCE_FILE
+                    : '.bx_maintenance'
+            );
+
+        $bHard =
+            is_file($sHardFile);
+
+        $bSoft =
+            !empty(
+                (string)getParam(
+                    'sys_maintenance_mode'
+                )
+            );
+
+        $sFilesVersion =
+            defined('BX_DOL_VERSION')
+                ? (string)BX_DOL_VERSION
+                : '';
+
+        $sDatabaseVersion =
+            (string)$this->oDb->getOne(
+                "SELECT `version`
+                 FROM `sys_modules`
+                 WHERE `name` = 'system'
+                 LIMIT 1"
+            );
+
+        $bVersionMismatch =
+            $sFilesVersion !== ''
+            && $sDatabaseVersion !== ''
+            && $sFilesVersion !== $sDatabaseVersion;
+
+        $aJournal = array();
+
+        if (
+            is_object($this->oModule)
+            && method_exists(
+                $this->oModule,
+                'getLatestActiveRepairJournal'
+            )
+        ) {
+            try {
+                $aJournal =
+                    $this->oModule
+                        ->getLatestActiveRepairJournal();
+
+                if (!is_array($aJournal))
+                    $aJournal = array();
+
+            } catch (Throwable $e) {
+                $aJournal = array();
+            }
+        }
+
+        $iJournalId =
+            (int)(
+                $aJournal['id']
+                ?? 0
+            );
+
+        $aUpgradeSignals =
+            $this->collectMaintenanceUpgradeLogSignals();
+
+        $aBlockers = array();
+
+        if ($bHard)
+            $aBlockers[] =
+                'UNA hard maintenance is active';
+
+        if ($bSoft)
+            $aBlockers[] =
+                'UNA soft maintenance is active';
+
+        if ($bVersionMismatch)
+            $aBlockers[] =
+                'UNA file and database versions do not agree';
+
+        if ($iJournalId > 0)
+            $aBlockers[] =
+                'A My UNA Doctor repair journal is still active';
+
+        $bReady =
+            empty($aBlockers);
+
+        $aEvidence = array(
+            'scope' =>
+                'maintenance_and_upgrade_state',
+
+            'ready' =>
+                $bReady,
+
+            'blockers' =>
+                $aBlockers,
+
+            'hard_maintenance' =>
+                $bHard,
+
+            'soft_maintenance' =>
+                $bSoft,
+
+            'una_files_version' =>
+                $sFilesVersion,
+
+            'una_database_version' =>
+                $sDatabaseVersion,
+
+            'version_mismatch' =>
+                $bVersionMismatch,
+
+            'doctor_repair_journal_id' =>
+                $iJournalId,
+
+            'doctor_repair_status' =>
+                (string)(
+                    $aJournal['status']
+                    ?? ''
+                ),
+
+            'upgrade_log_signal_count' =>
+                count($aUpgradeSignals),
+
+            'upgrade_log_signals' =>
+                $aUpgradeSignals,
+
+            'changes_applied' =>
+                false,
+        );
+
+        if ($bReady) {
+            $this->add(
+                'upgrade_readiness',
+                'ok',
+                'Upgrade readiness: maintenance state clear',
+                'No active UNA maintenance barrier, UNA version mismatch or Doctor repair journal is present. Upgrade-related log entries, if found, are advisory evidence only. Module checksum/update eligibility is evaluated separately.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        $sDetail =
+            'Doctor found maintenance or upgrade-state conditions that should be reviewed before starting another UNA upgrade: '
+            . implode(
+                '; ',
+                $aBlockers
+            )
+            . '. Module checksum/update eligibility is evaluated separately.';
+
+        $sSeverity =
+            (
+                $bVersionMismatch
+                && (
+                    $bHard
+                    || $bSoft
+                )
+            )
+                ? 'critical'
+                : 'warning';
+
+        $this->add(
+            'upgrade_readiness',
+            $sSeverity,
+            'Upgrade readiness: maintenance state requires review',
+            $sDetail,
+            $aEvidence
+        );
+    }
+
+
+    protected function collectMaintenanceUpgradeLogSignals()
+    {
+        $sLog =
+            rtrim(
+                BX_DIRECTORY_PATH_ROOT,
+                DIRECTORY_SEPARATOR
+            )
+            . DIRECTORY_SEPARATOR
+            . 'logs'
+            . DIRECTORY_SEPARATOR
+            . 'sys_modules.log';
+
+        if (
+            !is_file($sLog)
+            || !is_readable($sLog)
+        ) {
+            return array();
+        }
+
+        /*
+         * Ignore a module log that has not itself changed within
+         * the last 14 days.
+         */
+        $iMtime =
+            (int)@filemtime($sLog);
+
+        if (
+            $iMtime <= 0
+            || $iMtime < time() - (14 * 86400)
+        ) {
+            return array();
+        }
+
+        $aLines =
+            @file(
+                $sLog,
+                FILE_IGNORE_NEW_LINES
+                | FILE_SKIP_EMPTY_LINES
+            );
+
+        if (!is_array($aLines))
+            return array();
+
+        /*
+         * Bound inspection to the most recent 500 physical
+         * lines even if a historical log has grown very large.
+         */
+        if (count($aLines) > 500) {
+            $aLines =
+                array_slice(
+                    $aLines,
+                    -500
+                );
+        }
+
+        $aSignals = array();
+
+        foreach ($aLines as $sLine) {
+
+            $sLine =
+                trim((string)$sLine);
+
+            if ($sLine === '')
+                continue;
+
+            if (
+                !preg_match(
+                    '/upgrade|module update|update failed|cannot get a list of modules|apply upgrade/i',
+                    $sLine
+                )
+            ) {
+                continue;
+            }
+
+            /*
+             * Keep technical evidence bounded.
+             */
+            if (strlen($sLine) > 500) {
+                $sLine =
+                    substr(
+                        $sLine,
+                        0,
+                        500
+                    )
+                    . '…';
+            }
+
+            $aSignals[] = $sLine;
+        }
+
+        /*
+         * Store only the newest eight matching lines.
+         */
+        if (count($aSignals) > 8) {
+            $aSignals =
+                array_slice(
+                    $aSignals,
+                    -8
+                );
+        }
+
+        return $aSignals;
+    }
+
 
     protected function scanFilesystem()
     {
@@ -473,51 +1222,367 @@ class MyUnaDoctorScanner
         ));
     }
 
+    protected function extractModulePackageVersion($sConfigPath)
+    {
+        /*
+         * Read package identity without executing another module's
+         * install/config.php.
+         *
+         * php_strip_whitespace() removes PHP comments while preserving
+         * quoted values, which prevents a commented historical version
+         * from being mistaken for the live package version.
+         */
+        if (!is_file($sConfigPath)) {
+            return array(
+                'status' => 'missing',
+                'version' => '',
+            );
+        }
+
+        $sText = @php_strip_whitespace($sConfigPath);
+
+        if (!is_string($sText) || trim($sText) === '') {
+            return array(
+                'status' => 'unverified',
+                'version' => '',
+            );
+        }
+
+        $aPatterns = array(
+            '/[\'"]version[\'"]\s*=>\s*[\'"]([^\'"]+)[\'"]/i',
+            '/\$aConfig\s*\[\s*[\'"]version[\'"]\s*\]\s*=\s*[\'"]([^\'"]+)[\'"]/i',
+        );
+
+        foreach ($aPatterns as $sPattern) {
+            if (
+                preg_match($sPattern, $sText, $aMatch)
+                && isset($aMatch[1])
+                && trim((string)$aMatch[1]) !== ''
+            ) {
+                return array(
+                    'status' => 'parsed',
+                    'version' => trim((string)$aMatch[1]),
+                );
+            }
+        }
+
+        return array(
+            'status' => 'unverified',
+            'version' => '',
+        );
+    }
+
+
     protected function scanModules()
     {
         if (!$this->tableExists('sys_modules')) {
-            $this->add('modules', 'critical', 'sys_modules table is missing');
+            $this->add(
+                'modules',
+                'critical',
+                'sys_modules table is missing'
+            );
             return;
         }
 
-        $aModules = $this->oDb->getAll('SELECT `name`, `title`, `version`, `path`, `class_prefix`, `enabled` FROM `sys_modules` ORDER BY `title`');
+        $aModules = $this->oDb->getAll(
+            'SELECT `name`, `title`, `version`, `path`, `class_prefix`, `enabled`
+             FROM `sys_modules`
+             ORDER BY `title`'
+        );
+
         $iMissing = 0;
         $iMissingInstall = 0;
-        $sModulesRoot = rtrim(BX_DIRECTORY_PATH_MODULES, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        $iVersionChecked = 0;
+
+        $aVersionMismatches = array();
+        $aVersionUnverified = array();
+
+        $sModulesRoot =
+            rtrim(
+                BX_DIRECTORY_PATH_MODULES,
+                DIRECTORY_SEPARATOR
+            )
+            . DIRECTORY_SEPARATOR;
 
         foreach ($aModules as $aModule) {
             $sPath = trim((string)$aModule['path']);
+
             if ($sPath === '')
                 continue;
 
-            $sFull = $sModulesRoot . trim($sPath, '/\\') . DIRECTORY_SEPARATOR;
+            $sFull =
+                $sModulesRoot
+                . trim($sPath, '/\\')
+                . DIRECTORY_SEPARATOR;
+
             if (!is_dir($sFull)) {
                 $iMissing++;
-                $this->add('modules', ((int)$aModule['enabled'] === 1 ? 'critical' : 'warning'),
+
+                $this->add(
+                    'modules',
+                    ((int)$aModule['enabled'] === 1
+                        ? 'critical'
+                        : 'warning'),
                     'Installed module directory is missing',
-                    $aModule['title'] . ' (' . $aModule['name'] . ')',
-                    array('module' => $aModule['name'], 'version' => $aModule['version'], 'path' => $sPath, 'enabled' => (int)$aModule['enabled']));
+                    $aModule['title']
+                        . ' ('
+                        . $aModule['name']
+                        . ')',
+                    array(
+                        'module' => $aModule['name'],
+                        'version' => $aModule['version'],
+                        'path' => $sPath,
+                        'enabled' => (int)$aModule['enabled'],
+                    )
+                );
+
                 continue;
             }
 
-            if (!is_file($sFull . 'install/config.php')) {
+            $sConfig =
+                $sFull
+                . 'install/config.php';
+
+            if (!is_file($sConfig)) {
                 $iMissingInstall++;
-                $this->add('modules', 'warning', 'Module install metadata is missing',
-                    $aModule['title'] . ' does not have install/config.php at its registered module path.',
-                    array('module' => $aModule['name'], 'path' => $sPath));
+
+                $this->add(
+                    'modules',
+                    'warning',
+                    'Module install metadata is missing',
+                    $aModule['title']
+                        . ' does not have install/config.php at its registered module path.',
+                    array(
+                        'module' => $aModule['name'],
+                        'path' => $sPath,
+                    )
+                );
+
+                continue;
+            }
+
+            /*
+             * Package/source provenance:
+             * registered database version versus the version declared
+             * by the live package source.
+             */
+            $aPackage =
+                $this->extractModulePackageVersion(
+                    $sConfig
+                );
+
+            if (
+                isset($aPackage['status'])
+                && $aPackage['status'] === 'parsed'
+            ) {
+                $iVersionChecked++;
+
+                $sRegisteredVersion =
+                    trim((string)$aModule['version']);
+
+                $sPackageVersion =
+                    trim((string)$aPackage['version']);
+
+                if (
+                    $sRegisteredVersion !== ''
+                    && $sPackageVersion !== ''
+                    && $sRegisteredVersion !== $sPackageVersion
+                ) {
+                    $aVersionMismatches[] = array(
+                        'module' =>
+                            (string)$aModule['name'],
+                        'title' =>
+                            (string)$aModule['title'],
+                        'registered_version' =>
+                            $sRegisteredVersion,
+                        'package_version' =>
+                            $sPackageVersion,
+                        'path' =>
+                            $sPath,
+                        'enabled' =>
+                            (int)$aModule['enabled'],
+                        'config' =>
+                            trim($sPath, '/\\')
+                            . '/install/config.php',
+                    );
+                }
+
+            } else {
+                $aVersionUnverified[] = array(
+                    'module' =>
+                        (string)$aModule['name'],
+                    'title' =>
+                        (string)$aModule['title'],
+                    'registered_version' =>
+                        (string)$aModule['version'],
+                    'path' =>
+                        $sPath,
+                    'enabled' =>
+                        (int)$aModule['enabled'],
+                    'status' =>
+                        isset($aPackage['status'])
+                            ? (string)$aPackage['status']
+                            : 'unverified',
+                );
             }
         }
 
-        if ($iMissing === 0)
-            $this->add('modules', 'ok', 'All registered module directories were found', '', array('module_count' => count($aModules)));
-        if ($iMissingInstall === 0)
-            $this->add('modules', 'ok', 'Registered modules retain their install metadata');
 
-        $aDupNames = $this->oDb->getAll('SELECT `name`, COUNT(*) AS `cnt` FROM `sys_modules` GROUP BY `name` HAVING COUNT(*) > 1');
-        if (!empty($aDupNames))
-            $this->add('modules', 'critical', 'Duplicate module names are registered', '', array('duplicates' => $aDupNames));
-        else
-            $this->add('modules', 'ok', 'Module registration names are unique');
+        if ($iMissing === 0) {
+            $this->add(
+                'modules',
+                'ok',
+                'All registered module directories were found',
+                '',
+                array(
+                    'module_count' => count($aModules),
+                )
+            );
+        }
+
+
+        if ($iMissingInstall === 0) {
+            $this->add(
+                'modules',
+                'ok',
+                'Registered modules retain their install metadata'
+            );
+        }
+
+
+        /*
+         * One aggregate provenance finding prevents a large number of
+         * per-module findings from artificially inflating health scoring.
+         */
+        if (!empty($aVersionMismatches)) {
+
+            $aEvidence = $this->humanEvidence(
+                'Doctor found '
+                    . count($aVersionMismatches)
+                    . ' module(s) whose registered database version differs from the version declared by the live package source.',
+                array(),
+                'Package/source provenance is inconsistent. The registered module identity and live source package do not agree.',
+                'Establish which package is authoritative before updating, repairing, or re-baselining the affected module.'
+            );
+
+            $aEvidence['modules_checked'] =
+                $iVersionChecked;
+
+            $aEvidence['mismatch_count'] =
+                count($aVersionMismatches);
+
+            $aEvidence['mismatches'] =
+                array_slice(
+                    $aVersionMismatches,
+                    0,
+                    50
+                );
+
+            $aEvidence['unverified_count'] =
+                count($aVersionUnverified);
+
+            if (!empty($aVersionUnverified)) {
+                $aEvidence['unverified_modules'] =
+                    array_slice(
+                        $aVersionUnverified,
+                        0,
+                        50
+                    );
+            }
+
+            $this->add(
+                'modules',
+                'warning',
+                'Registered module versions differ from live package metadata',
+                '',
+                $aEvidence
+            );
+
+        } elseif (!empty($aVersionUnverified)) {
+
+            $aEvidence = $this->humanEvidence(
+                'Doctor confirmed no package/source version mismatch in the modules it could verify, but '
+                    . count($aVersionUnverified)
+                    . ' module package version(s) could not be read safely.',
+                array(),
+                'No mismatch was confirmed. Package provenance is incomplete for the listed modules.',
+                'Review only the unverified package metadata. Do not guess or rewrite module versions.'
+            );
+
+            $aEvidence['modules_checked'] =
+                $iVersionChecked;
+
+            $aEvidence['mismatch_count'] = 0;
+
+            $aEvidence['unverified_count'] =
+                count($aVersionUnverified);
+
+            $aEvidence['unverified_modules'] =
+                array_slice(
+                    $aVersionUnverified,
+                    0,
+                    50
+                );
+
+            $this->add(
+                'modules',
+                'info',
+                'Some live module package versions could not be verified',
+                '',
+                $aEvidence
+            );
+
+        } else {
+
+            $aEvidence = $this->humanEvidence(
+                'Doctor compared '
+                    . $iVersionChecked
+                    . ' registered module version(s) with their live install/config.php package metadata; all versions agree.',
+                array(),
+                'None',
+                'No'
+            );
+
+            $aEvidence['modules_checked'] =
+                $iVersionChecked;
+
+            $aEvidence['mismatch_count'] = 0;
+            $aEvidence['unverified_count'] = 0;
+
+            $this->add(
+                'modules',
+                'ok',
+                'Registered module versions match live package metadata',
+                '',
+                $aEvidence
+            );
+        }
+
+
+        $aDupNames = $this->oDb->getAll(
+            'SELECT `name`, COUNT(*) AS `cnt`
+             FROM `sys_modules`
+             GROUP BY `name`
+             HAVING COUNT(*) > 1'
+        );
+
+        if (!empty($aDupNames)) {
+            $this->add(
+                'modules',
+                'critical',
+                'Duplicate module names are registered',
+                '',
+                array(
+                    'duplicates' => $aDupNames,
+                )
+            );
+        } else {
+            $this->add(
+                'modules',
+                'ok',
+                'Module registration names are unique'
+            );
+        }
     }
 
 
@@ -840,29 +1905,81 @@ class MyUnaDoctorScanner
          * IMPORTANT:
          * A module which could not be hashed is UNKNOWN, not OK.
          */
+        /*
+         * Separate evidence-backed compatibility overrides from
+         * unexplained source drift.
+         *
+         * UNA's authentic checksum baseline remains unchanged.
+         */
+        $aApprovedOverrides = array();
+        $aUnapprovedModified = array();
+
+        foreach ($aModified as $aModifiedFile) {
+            $aApproval =
+                $this->inspectApprovedCompatibilityOverride(
+                    isset($aModifiedFile['module'])
+                        ? (string)$aModifiedFile['module']
+                        : '',
+                    isset($aModifiedFile['file'])
+                        ? (string)$aModifiedFile['file']
+                        : '',
+                    isset($aModifiedFile['expected_md5'])
+                        ? (string)$aModifiedFile['expected_md5']
+                        : '',
+                    isset($aModifiedFile['current_md5'])
+                        ? (string)$aModifiedFile['current_md5']
+                        : ''
+                );
+
+            if (!empty($aApproval['verified'])) {
+                $aModifiedFile['approval'] = $aApproval;
+                $aApprovedOverrides[] = $aModifiedFile;
+                continue;
+            }
+
+            $aUnapprovedModified[] = $aModifiedFile;
+        }
+
+        $aModified = $aUnapprovedModified;
+
         if (
             empty($aModified)
             && empty($aMissing)
             && empty($aPreviewErrors)
         ) {
             $aEvidence = $this->humanEvidence(
-                'Doctor checked '
-                    . $iTracked
-                    . ' tracked module file(s); all baseline files retain their recorded MD5 checksums.',
+                !empty($aApprovedOverrides)
+                    ? 'Doctor found '
+                        . count($aApprovedOverrides)
+                        . ' approved compatibility override(s) and no unexplained tracked-file checksum drift.'
+                    : 'Doctor checked '
+                        . $iTracked
+                        . ' tracked module file(s); all baseline files retain their recorded MD5 checksums.',
                 array(),
                 'None',
                 'No'
             );
 
             $aEvidence['tracked_files_checked'] = $iTracked;
+            $aEvidence['approved_override_count'] =
+                count($aApprovedOverrides);
+
+            if (!empty($aApprovedOverrides)) {
+                $aEvidence['approved_compatibility_overrides'] =
+                    array_slice($aApprovedOverrides, 0, 50);
+            }
             $aEvidence['modified_count'] = 0;
             $aEvidence['missing_count'] = 0;
             $aEvidence['unverified_module_count'] = 0;
 
             $this->add(
                 'file_integrity',
-                'ok',
-                'Tracked module files retain their recorded checksums',
+                !empty($aApprovedOverrides)
+                    ? 'info'
+                    : 'ok',
+                !empty($aApprovedOverrides)
+                    ? 'Only approved compatibility overrides differ from recorded checksums'
+                    : 'Tracked module files retain their recorded checksums',
                 '',
                 $aEvidence
             );
@@ -882,6 +1999,13 @@ class MyUnaDoctorScanner
             );
 
             $aEvidence['tracked_files_checked'] = $iTracked;
+            $aEvidence['approved_override_count'] =
+                count($aApprovedOverrides);
+
+            if (!empty($aApprovedOverrides)) {
+                $aEvidence['approved_compatibility_overrides'] =
+                    array_slice($aApprovedOverrides, 0, 50);
+            }
             $aEvidence['modified_count'] = 0;
             $aEvidence['missing_count'] = 0;
             $aEvidence['unverified_module_count'] =
@@ -918,6 +2042,13 @@ class MyUnaDoctorScanner
             );
 
             $aEvidence['tracked_files_checked'] = $iTracked;
+            $aEvidence['approved_override_count'] =
+                count($aApprovedOverrides);
+
+            if (!empty($aApprovedOverrides)) {
+                $aEvidence['approved_compatibility_overrides'] =
+                    array_slice($aApprovedOverrides, 0, 50);
+            }
             $aEvidence['modified_count'] = count($aModified);
             $aEvidence['missing_count'] = count($aMissing);
 
@@ -1646,62 +2777,16 @@ class MyUnaDoctorScanner
         $aHistorical = array();
 
         /*
-         * High-confidence update-preparation candidates discovered
-         * during File Integrity. Still review-only in 0.2.2.
+         * Runtime-generated module content is an update-readiness
+         * advisory, not evidence of damaged module source.
+         *
+         * File Integrity already records these modules in
+         * aRuntimeContentCandidates and emits the dedicated INFO
+         * finding. Do not place them into $aActive repairs.
+         *
+         * The Studio UI may offer an administrator-initiated
+         * "Prepare for Update" workflow from that INFO evidence.
          */
-        foreach (
-            $this->aRuntimeContentCandidates
-            as $aRuntime
-        ) {
-            $aActive[] = array(
-                'rule' =>
-                    'runtime_content_update_preparation',
-
-                'confidence' =>
-                    isset($aRuntime['confidence'])
-                        ? $aRuntime['confidence']
-                        : 'high',
-
-                'status' => 'review',
-
-                'module' =>
-                    $aRuntime['module'],
-
-                'title' =>
-                    $aRuntime['title'],
-
-                'directory' =>
-                    $aRuntime['dominant_directory'],
-
-                'runtime_file_count' =>
-                    $aRuntime['new_untracked_count'],
-
-                'source_integrity' =>
-                    $aRuntime['source_integrity'],
-
-                'generator_discovery' =>
-                    $aRuntime['generator_discovery']
-                    ?? array(),
-
-                'studio_effect' =>
-                    'UNA Studio update readiness is affected by runtime/generated files inside the module directory.',
-
-                'recommended_workflow' => array(
-                    'Pause the module process that generates or imports runtime content.',
-                    'Create a safety snapshot before moving runtime data.',
-                    'Move the identified runtime directory outside the module tree without deleting it.',
-                    'Run Doctor again and verify Studio update readiness.',
-                    'Perform the approved module update.',
-                    'Restore the runtime directory.',
-                    'Verify module operation and runtime data.',
-                    'Resume the module generator/import process.'
-                ),
-
-                'automatic_repair' => false,
-            );
-        }
-
-
         /*
          * Backup policy candidates collected during the same
          * module hash traversal. No second filesystem scan.
@@ -1920,13 +3005,17 @@ class MyUnaDoctorScanner
         }
 
         if (empty($aActive)) {
+            $bHistorical = !empty($aHistorical);
+
             $aEvidence = $this->humanEvidence(
-                !empty($aHistorical)
-                    ? 'Doctor found known repair signatures in recent logs, but none are currently verified as active from the evidence available.'
-                    : 'Doctor found no currently verified high-confidence repair candidates.',
+                $bHistorical
+                    ? 'Doctor found previous repair-related activity, but no new repair problem is currently confirmed.'
+                    : 'Doctor found no new repair problem that currently needs attention.',
                 array(),
-                'None',
-                'No'
+                $bHistorical
+                    ? 'No new repair is being recommended from this scan.'
+                    : 'No repair action is needed from this scan.',
+                'If a repair is already in progress, continue it from the active repair session. Otherwise, no action is needed.'
             );
 
             $aEvidence['repair_backup_root'] =
@@ -1937,10 +3026,10 @@ class MyUnaDoctorScanner
 
             $this->add(
                 'repairs',
-                !empty($aHistorical) ? 'info' : 'ok',
-                !empty($aHistorical)
-                    ? 'Recent repair patterns were classified as historical or unverified'
-                    : 'No active high-confidence repair candidates were detected',
+                $bHistorical ? 'info' : 'ok',
+                $bHistorical
+                    ? 'Previous repair evidence found'
+                    : 'No new repair needed',
                 '',
                 $aEvidence
             );
@@ -1948,13 +3037,19 @@ class MyUnaDoctorScanner
             return;
         }
 
+        $iActiveRepairs = count($aActive);
+
         $aEvidence = $this->humanEvidence(
-            'Doctor identified '
-                . count($aActive)
-                . ' repair candidate(s) that merit administrator review.',
+            'Doctor found '
+                . $iActiveRepairs
+                . (
+                    $iActiveRepairs === 1
+                        ? ' recommended repair ready for review.'
+                        : ' recommended repairs ready for review.'
+                ),
             array(),
-            'Detection does not change site health by itself. Individual underlying failures may affect runtime or Studio operation.',
-            'Administrator approval is required. Doctor can arm supported repairs and explicitly protect verified runtime content. Module update execution remains a separate guarded stage.'
+            'Reviewing this recommendation does not make any changes to your site.',
+            'Review the recommendation and approve it when you are ready. Doctor will protect the site and verify each step before making changes.'
         );
 
         $aEvidence['repair_backup_root'] =
@@ -1969,7 +3064,7 @@ class MyUnaDoctorScanner
         $this->add(
             'repairs',
             'info',
-            'High-confidence repair candidates are available for review',
+            'Recommended repair ready for review',
             '',
             $aEvidence
         );
@@ -2362,6 +3457,164 @@ class MyUnaDoctorScanner
         return $aRows;
     }
 
+    protected function inspectApprovedCompatibilityOverride(
+        $sModule,
+        $sFile,
+        $sExpectedMd5,
+        $sCurrentMd5
+    ) {
+        /*
+         * AQB Points v3 compatibility override.
+         *
+         * Never approve by filename alone.
+         */
+        if (
+            $sModule !== 'aqb_points'
+            || $sFile !== 'classes/AqbPointsConfig.php'
+            || strtolower((string)$sExpectedMd5) !==
+                '5dad898d9adcc4876cc41c7e387dceb1'
+            || strtolower((string)$sCurrentMd5) !==
+                '3c3970a78a094016c7e031762ac2ed9c'
+        ) {
+            return array();
+        }
+
+        if (!$this->tableExists('sys_objects_page'))
+            return array();
+
+        $oDb = BxDolDb::getInstance();
+
+        $iReputationOwner = (int)$oDb->getOne(
+            "SELECT COUNT(*)
+             FROM `sys_objects_page`
+             WHERE `object`='bx_reputation_info'
+               AND `module`='bx_reputation'
+               AND `uri`='points-info'
+               AND `url`='page.php?i=points-info'"
+        );
+
+        $iPointsOwner = (int)$oDb->getOne(
+            "SELECT COUNT(*)
+             FROM `sys_objects_page`
+             WHERE `object`='aqb_points_info'
+               AND `module`='aqb_points'
+               AND `uri`='aqb-points-info'
+               AND `url`='page.php?i=aqb-points-info'"
+        );
+
+        $iUnexpectedOwner = (int)$oDb->getOne(
+            "SELECT COUNT(*)
+             FROM `sys_objects_page`
+             WHERE `uri`='points-info'
+               AND NOT (
+                   `object`='bx_reputation_info'
+                   AND `module`='bx_reputation'
+               )"
+        );
+
+        if (
+            $iReputationOwner !== 1
+            || $iPointsOwner !== 1
+            || $iUnexpectedOwner !== 0
+        ) {
+            return array();
+        }
+
+        return array(
+            'verified' => true,
+            'classification' =>
+                'approved_compatibility_override',
+            'reason' =>
+                'AQB Points v3 uses aqb-points-info because UNA Reputation owns points-info.',
+            'vendor_md5' =>
+                strtolower((string)$sExpectedMd5),
+            'approved_md5' =>
+                strtolower((string)$sCurrentMd5),
+            'reputation_uri' => 'points-info',
+            'points_uri' => 'aqb-points-info',
+        );
+    }
+
+    protected function inspectResolvedHistoricalLogError($sText)
+    {
+        /*
+         * Preserve the old AQB collation incident in history,
+         * but stop scoring it when current database evidence
+         * proves the condition was repaired.
+         */
+        if (
+            stripos($sText, 'Illegal mix of collations') === false
+            || stripos($sText, 'aqb-points-info') === false
+            || stripos($sText, 'aqb_points_actions') === false
+        ) {
+            return array();
+        }
+
+        if (
+            !$this->tableExists('aqb_points_actions')
+            || !$this->tableExists('sys_alerts')
+            || !$this->tableExists('sys_objects_page')
+        ) {
+            return array();
+        }
+
+        $oDb = BxDolDb::getInstance();
+
+        $sPointsCollation = (string)$oDb->getOne(
+            "SELECT `TABLE_COLLATION`
+             FROM `INFORMATION_SCHEMA`.`TABLES`
+             WHERE `TABLE_SCHEMA`=DATABASE()
+               AND `TABLE_NAME`='aqb_points_actions'"
+        );
+
+        $sAlertsCollation = (string)$oDb->getOne(
+            "SELECT `TABLE_COLLATION`
+             FROM `INFORMATION_SCHEMA`.`TABLES`
+             WHERE `TABLE_SCHEMA`=DATABASE()
+               AND `TABLE_NAME`='sys_alerts'"
+        );
+
+        $iBadColumns = (int)$oDb->getOne(
+            "SELECT COUNT(*)
+             FROM `INFORMATION_SCHEMA`.`COLUMNS`
+             WHERE `TABLE_SCHEMA`=DATABASE()
+               AND `TABLE_NAME`='aqb_points_actions'
+               AND `CHARACTER_SET_NAME` IS NOT NULL
+               AND `COLLATION_NAME` <>
+                   'utf8mb4_unicode_ci'"
+        );
+
+        $iInfoPage = (int)$oDb->getOne(
+            "SELECT COUNT(*)
+             FROM `sys_objects_page`
+             WHERE `object`='aqb_points_info'
+               AND `module`='aqb_points'
+               AND `uri`='aqb-points-info'"
+        );
+
+        if (
+            $sPointsCollation !== 'utf8mb4_unicode_ci'
+            || $sAlertsCollation !== 'utf8mb4_unicode_ci'
+            || $iBadColumns !== 0
+            || $iInfoPage !== 1
+        ) {
+            return array();
+        }
+
+        return array(
+            'verified' => true,
+            'reason' =>
+                'The historical AQB Points collation error is resolved in the current database state.',
+            'aqb_points_actions_collation' =>
+                $sPointsCollation,
+            'sys_alerts_collation' =>
+                $sAlertsCollation,
+            'nonconforming_points_columns' =>
+                $iBadColumns,
+            'page_uri' => 'aqb-points-info',
+        );
+    }
+
     protected function classifyLogEntry($sText, $bFatal, $bError)
     {
         $aResult = array(
@@ -2396,6 +3649,18 @@ class MyUnaDoctorScanner
             }
 
             $aResult['classification'] = 'transcoder_error';
+            return $aResult;
+        }
+
+        $aResolved =
+            $this->inspectResolvedHistoricalLogError($sText);
+
+        if (!empty($aResolved['verified'])) {
+            $aResult['health_impact'] = false;
+            $aResult['classification'] =
+                'resolved_historical_error';
+            $aResult['evidence'] = $aResolved;
+
             return $aResult;
         }
 
