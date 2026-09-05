@@ -531,3 +531,4 @@ CREATE TABLE IF NOT EXISTS `my_una_doctor_reference_library` (
     KEY `module_version` (`module_name`, `reference_version`),
     KEY `latest_session` (`latest_session_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

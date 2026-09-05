@@ -59,3 +59,4 @@ DROP TABLE IF EXISTS `my_una_doctor_scans`;
 
 -- Remove My UNA Doctor's Module Reference Library catalog.
 DROP TABLE IF EXISTS `my_una_doctor_reference_library`;
+
