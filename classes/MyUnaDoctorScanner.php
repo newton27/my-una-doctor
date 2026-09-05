@@ -23,6 +23,34 @@ class MyUnaDoctorScanner
 
         $this->guarded('system', array($this, 'scanSystem'));
         $this->guarded(
+            'compatibility',
+            array(
+                $this,
+                'scanCompatibilityIntelligence'
+            )
+        );
+        $this->guarded(
+            'compatibility',
+            array(
+                $this,
+                'scanUnaPhpExtensionsCompatibility'
+            )
+        );
+        $this->guarded(
+            'compatibility',
+            array(
+                $this,
+                'scanInstalledModuleCompatibility'
+            )
+        );
+        $this->guarded(
+            'compatibility',
+            array(
+                $this,
+                'scanUnaUpgradeTargetIntelligence'
+            )
+        );
+        $this->guarded(
             'maintenance',
             array(
                 $this,
@@ -115,24 +143,2057 @@ class MyUnaDoctorScanner
                 array('files_version' => $sFilesVersion, 'database_version' => $sDbVersion));
         }
 
-        if (version_compare(PHP_VERSION, '8.1.0', '<')) {
-            $this->add('system', 'critical', 'PHP version is below the supported baseline',
-                'My UNA Doctor expects PHP 8.1 or newer.',
-                array('php_version' => PHP_VERSION));
-        } else {
-            $this->add('system', 'ok', 'PHP version meets the baseline', '', array('php_version' => PHP_VERSION));
+    }
+
+
+    /**
+     * Compare the PHP runtime executing Doctor with the minimum
+     * PHP requirement declared by this installed UNA source.
+     *
+     * Diagnostic only. Meeting the minimum requirement is not
+     * treated as certification of every third-party module or
+     * of a future UNA upgrade target.
+     */
+    protected function scanCompatibilityIntelligence()
+    {
+        $sPhpVersion =
+            (string)PHP_VERSION;
+
+        $iPhpVersionId =
+            defined('PHP_VERSION_ID')
+                ? (int)PHP_VERSION_ID
+                : 0;
+
+        $sPhpSapi =
+            (string)PHP_SAPI;
+
+        $sUnaFilesVersion =
+            defined('BX_DOL_VERSION')
+                ? (string)BX_DOL_VERSION
+                : '';
+
+        $sUnaDatabaseVersion =
+            (string)$this->oDb->getOne(
+                "SELECT `version`
+                 FROM `sys_modules`
+                 WHERE `name` = 'system'
+                 LIMIT 1"
+            );
+
+        $aRequirement =
+            $this->detectUnaMinimumPhpRequirement();
+
+        $sMinimumPhp =
+            (string)(
+                $aRequirement['version']
+                ?? ''
+            );
+
+        $aEvidence = array(
+            'scope' =>
+                'current_installed_una_runtime',
+
+            'php_version' =>
+                $sPhpVersion,
+
+            'php_version_id' =>
+                $iPhpVersionId,
+
+            'php_sapi' =>
+                $sPhpSapi,
+
+            'una_files_version' =>
+                $sUnaFilesVersion,
+
+            'una_database_version' =>
+                $sUnaDatabaseVersion,
+
+            'minimum_php_version' =>
+                $sMinimumPhp,
+
+            'minimum_php_source' =>
+                (string)(
+                    $aRequirement['source']
+                    ?? 'unavailable'
+                ),
+
+            'minimum_php_source_path' =>
+                (string)(
+                    $aRequirement['source_path']
+                    ?? ''
+                ),
+
+            'minimum_php_source_sha256' =>
+                (string)(
+                    $aRequirement['source_sha256']
+                    ?? ''
+                ),
+
+            'requirement_confidence' =>
+                (string)(
+                    $aRequirement['confidence']
+                    ?? 'unknown'
+                ),
+
+            'requirement_detection_reason' =>
+                (string)(
+                    $aRequirement['reason']
+                    ?? ''
+                ),
+
+            'minimum_only' =>
+                true,
+
+            'future_upgrade_target_evaluated' =>
+                false,
+
+            'third_party_modules_certified' =>
+                false,
+
+            'changes_applied' =>
+                false,
+        );
+
+        /*
+         * If Doctor cannot establish the requirement from this
+         * UNA installation, do not silently call compatibility
+         * healthy. The old 8.1 baseline is retained only as an
+         * explicitly identified fallback, not as claimed local
+         * UNA evidence.
+         */
+        if ($sMinimumPhp === '') {
+            $sFallbackMinimum =
+                '8.1.0';
+
+            $aEvidence['minimum_php_version'] =
+                $sFallbackMinimum;
+
+            $aEvidence['minimum_php_source'] =
+                'doctor_fallback';
+
+            $aEvidence['requirement_confidence'] =
+                'fallback';
+
+            $aEvidence['meets_minimum'] =
+                version_compare(
+                    $sPhpVersion,
+                    $sFallbackMinimum,
+                    '>='
+                );
+
+            $this->add(
+                'compatibility',
+                'warning',
+                'UNA local PHP requirement could not be verified',
+                'Doctor could not establish the minimum PHP requirement from this installed UNA source. PHP was compared with the conservative Doctor fallback of 8.1.0, but the result is not being treated as verified UNA compatibility.',
+                $aEvidence
+            );
+
+            return;
         }
 
-        $aRequired = array('json', 'mbstring', 'curl', 'openssl', 'zip', 'gd');
-        $aMissing = array();
-        foreach ($aRequired as $sExt) {
-            if (!extension_loaded($sExt))
-                $aMissing[] = $sExt;
+        $bMeetsMinimum =
+            version_compare(
+                $sPhpVersion,
+                $sMinimumPhp,
+                '>='
+            );
+
+        $aEvidence['meets_minimum'] =
+            $bMeetsMinimum;
+
+        if (!$bMeetsMinimum) {
+            $this->add(
+                'compatibility',
+                'critical',
+                'PHP runtime is below this UNA installation minimum',
+                'The PHP runtime executing My UNA Doctor is older than the minimum PHP version declared by the installed UNA Studio audit. Upgrade PHP only after confirming the hosting environment, UNA build and installed modules are compatible.',
+                $aEvidence
+            );
+
+            return;
         }
-        if (!empty($aMissing))
-            $this->add('system', 'warning', 'Common UNA PHP extensions are missing', implode(', ', $aMissing));
-        else
-            $this->add('system', 'ok', 'Common UNA PHP extensions are available');
+
+        $this->add(
+            'compatibility',
+            'ok',
+            'PHP runtime meets this UNA installation minimum',
+            'Doctor verified the current PHP runtime against the minimum PHP version declared by this installed UNA source. This confirms the UNA minimum-version requirement only; it does not certify every third-party module or a future UNA upgrade target.',
+            $aEvidence
+        );
+    }
+
+
+    /**
+     * Verify PHP modules required by this installed UNA source.
+     *
+     * Diagnostic only. Doctor derives the requirement from
+     * UNA's local Studio audit instead of maintaining its own
+     * fixed extension list.
+     */
+    protected function scanUnaPhpExtensionsCompatibility()
+    {
+        $aRequirement =
+            $this->detectUnaRequiredPhpExtensions();
+
+        $aRequired =
+            isset($aRequirement['extensions'])
+            && is_array($aRequirement['extensions'])
+                ? $aRequirement['extensions']
+                : array();
+
+        $aLoaded = array();
+        $aMissing = array();
+
+        foreach ($aRequired as $sExtension) {
+            if (extension_loaded($sExtension))
+                $aLoaded[] = $sExtension;
+            else
+                $aMissing[] = $sExtension;
+        }
+
+        $aEvidence = array(
+            'scope' =>
+                'current_installed_una_php_extensions',
+
+            'required_extensions' =>
+                $aRequired,
+
+            'required_extension_count' =>
+                count($aRequired),
+
+            'loaded_required_extensions' =>
+                $aLoaded,
+
+            'loaded_required_count' =>
+                count($aLoaded),
+
+            'missing_required_extensions' =>
+                $aMissing,
+
+            'missing_required_count' =>
+                count($aMissing),
+
+            'requirement_source' =>
+                (string)(
+                    $aRequirement['source']
+                    ?? 'unavailable'
+                ),
+
+            'requirement_source_path' =>
+                (string)(
+                    $aRequirement['source_path']
+                    ?? ''
+                ),
+
+            'requirement_source_sha256' =>
+                (string)(
+                    $aRequirement['source_sha256']
+                    ?? ''
+                ),
+
+            'requirement_confidence' =>
+                (string)(
+                    $aRequirement['confidence']
+                    ?? 'unknown'
+                ),
+
+            'requirement_detection_reason' =>
+                (string)(
+                    $aRequirement['reason']
+                    ?? ''
+                ),
+
+            'php_version' =>
+                (string)PHP_VERSION,
+
+            'php_sapi' =>
+                (string)PHP_SAPI,
+
+            'changes_applied' =>
+                false,
+        );
+
+        /*
+         * Do not silently substitute Doctor's former hardcoded
+         * list when the installed UNA source cannot be verified.
+         */
+        if (empty($aRequired)) {
+            $this->add(
+                'compatibility',
+                'warning',
+                'UNA PHP extension requirements could not be verified',
+                'Doctor could not extract the required PHP-module list from this installed UNA Studio audit. No Doctor-owned extension list was substituted.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        if (!empty($aMissing)) {
+            $this->add(
+                'compatibility',
+                'critical',
+                'Required PHP extensions for this UNA installation are missing',
+                'One or more PHP extensions declared by this installed UNA Studio audit are not loaded in the PHP runtime currently serving Doctor.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        $this->add(
+            'compatibility',
+            'ok',
+            'Required PHP extensions for this UNA installation are available',
+            'Doctor verified the PHP modules declared by this installed UNA Studio audit against the PHP runtime currently executing the scan.',
+            $aEvidence
+        );
+    }
+
+
+    /**
+     * Evaluate registered module package compatibility using
+     * UNA's own current compatibility/dependency semantics.
+     *
+     * Diagnostic only.
+     */
+    protected function scanInstalledModuleCompatibility()
+    {
+        $sUnaVersion =
+            function_exists('bx_get_ver')
+                ? (string)bx_get_ver()
+                : (
+                    defined('BX_DOL_VERSION')
+                        ? (string)BX_DOL_VERSION
+                        : ''
+                );
+
+        $aModules =
+            $this->oDb->getAll(
+                "SELECT
+                    `name`,
+                    `title`,
+                    `version`,
+                    `path`,
+                    `uri`,
+                    `enabled`
+                 FROM `sys_modules`
+                 WHERE `name` <> 'system'
+                 ORDER BY `name`"
+            );
+
+        $iModulesChecked = 0;
+        $iCompatibleDeclarations = 0;
+        $iCompatible = 0;
+        $iDependencyModules = 0;
+        $iDependencyDeclarations = 0;
+        $iDependencyEnforcementModules = 0;
+
+        $aIncompatible = array();
+        $aUnverified = array();
+        $aDependencies = array();
+        $aUnsatisfiedDependencies = array();
+        $aDependencyEnforcementMissing = array();
+
+        foreach ($aModules as $aModule) {
+            $iModulesChecked++;
+
+            $sModuleName =
+                (string)($aModule['name'] ?? '');
+
+            $sModuleTitle =
+                (string)($aModule['title'] ?? '');
+
+            $sModuleVersion =
+                (string)($aModule['version'] ?? '');
+
+            $sModulePath =
+                trim(
+                    str_replace(
+                        array('\\', '..'),
+                        array('/', ''),
+                        (string)($aModule['path'] ?? '')
+                    ),
+                    '/'
+                );
+
+            $bModuleEnabled =
+                !empty($aModule['enabled']);
+
+            $sRelativeConfig =
+                'modules/'
+                . $sModulePath
+                . '/install/config.php';
+
+            $sConfigPath =
+                rtrim(
+                    BX_DIRECTORY_PATH_ROOT,
+                    DIRECTORY_SEPARATOR
+                )
+                . DIRECTORY_SEPARATOR
+                . str_replace(
+                    '/',
+                    DIRECTORY_SEPARATOR,
+                    $sRelativeConfig
+                );
+
+            if (
+                $sModulePath === ''
+                || !is_file($sConfigPath)
+                || !is_readable($sConfigPath)
+            ) {
+                $aUnverified[] = array(
+                    'module' => $sModuleName,
+                    'title' => $sModuleTitle,
+                    'version' => $sModuleVersion,
+                    'enabled' => $bModuleEnabled,
+                    'config' => $sRelativeConfig,
+                    'reason' =>
+                        'package_config_missing_or_unreadable',
+                );
+
+                continue;
+            }
+
+            $iSize =
+                (int)@filesize($sConfigPath);
+
+            if (
+                $iSize <= 0
+                || $iSize > 1048576
+            ) {
+                $aUnverified[] = array(
+                    'module' => $sModuleName,
+                    'title' => $sModuleTitle,
+                    'version' => $sModuleVersion,
+                    'enabled' => $bModuleEnabled,
+                    'config' => $sRelativeConfig,
+                    'reason' =>
+                        'package_config_size_unexpected',
+                );
+
+                continue;
+            }
+
+            $sSource =
+                @file_get_contents($sConfigPath);
+
+            if ($sSource === false) {
+                $aUnverified[] = array(
+                    'module' => $sModuleName,
+                    'title' => $sModuleTitle,
+                    'version' => $sModuleVersion,
+                    'enabled' => $bModuleEnabled,
+                    'config' => $sRelativeConfig,
+                    'reason' =>
+                        'package_config_read_failed',
+                );
+
+                continue;
+            }
+
+            /*
+             * compatible_with
+             *
+             * Mirror UNA core _isCompatibleWith():
+             * current UNA version >= ANY declared entry.
+             */
+            $sCompatibleBody =
+                $this->extractSimpleConfigArrayBody(
+                    $sSource,
+                    'compatible_with'
+                );
+
+            $aCompatibleWith =
+                $sCompatibleBody === null
+                    ? array()
+                    : $this->parseQuotedStringList(
+                        $sCompatibleBody
+                    );
+
+            if (empty($aCompatibleWith)) {
+                $aUnverified[] = array(
+                    'module' => $sModuleName,
+                    'title' => $sModuleTitle,
+                    'version' => $sModuleVersion,
+                    'enabled' => $bModuleEnabled,
+                    'config' => $sRelativeConfig,
+                    'reason' =>
+                        'compatible_with_missing_or_unparsed',
+                );
+            } else {
+                $iCompatibleDeclarations++;
+
+                $bCompatible = false;
+
+                foreach (
+                    $aCompatibleWith
+                    as $sRequiredVersion
+                ) {
+                    if (
+                        version_compare(
+                            strtolower($sUnaVersion),
+                            strtolower($sRequiredVersion),
+                            '>='
+                        ) == 1
+                    ) {
+                        $bCompatible = true;
+                        break;
+                    }
+                }
+
+                if ($bCompatible) {
+                    $iCompatible++;
+                } else {
+                    $aIncompatible[] = array(
+                        'module' => $sModuleName,
+                        'title' => $sModuleTitle,
+                        'module_version' => $sModuleVersion,
+                        'enabled' => $bModuleEnabled,
+                        'compatible_with' =>
+                            $aCompatibleWith,
+                        'una_version' =>
+                            $sUnaVersion,
+                        'comparison' =>
+                            'UNA core: current >= any compatible_with entry',
+                    );
+                }
+            }
+
+            /*
+             * dependencies
+             *
+             * UNA uses the array KEY as the dependency identifier.
+             * The array VALUE is not version-compared.
+             */
+            $sDependenciesBody =
+                $this->extractSimpleConfigArrayBody(
+                    $sSource,
+                    'dependencies'
+                );
+
+            $aDeclaredDependencies =
+                $sDependenciesBody === null
+                    ? array()
+                    : $this->parseDependencyPairs(
+                        $sDependenciesBody
+                    );
+
+            if (empty($aDeclaredDependencies))
+                continue;
+
+            $iDependencyModules++;
+
+            $bInstallChecks =
+                $this->configOperationChecksDependencies(
+                    $sSource,
+                    'install'
+                );
+
+            $bEnableChecks =
+                $this->configOperationChecksDependencies(
+                    $sSource,
+                    'enable'
+                );
+
+            $bUpdateChecks =
+                $this->configOperationChecksDependencies(
+                    $sSource,
+                    'update'
+                );
+
+            if (
+                $bInstallChecks
+                || $bEnableChecks
+                || $bUpdateChecks
+            ) {
+                $iDependencyEnforcementModules++;
+            } else {
+                $aDependencyEnforcementMissing[] = array(
+                    'module' => $sModuleName,
+                    'title' => $sModuleTitle,
+                    'enabled' => $bModuleEnabled,
+                    'declared_dependencies' =>
+                        array_keys($aDeclaredDependencies),
+                    'install_check_dependencies' => false,
+                    'enable_check_dependencies' => false,
+                    'update_check_dependencies' => false,
+                );
+            }
+
+            foreach (
+                $aDeclaredDependencies
+                as $sDependency => $sDeclaredValue
+            ) {
+                $iDependencyDeclarations++;
+
+                $aTarget =
+                    $this->oDb->getRow(
+                        "SELECT
+                            `name`,
+                            `title`,
+                            `version`,
+                            `uri`,
+                            `enabled`
+                         FROM `sys_modules`
+                         WHERE `uri` = ?
+                            OR `name` = ?
+                         ORDER BY `enabled` DESC
+                         LIMIT 1",
+                        array(
+                            $sDependency,
+                            $sDependency,
+                        )
+                    );
+
+                $bFound =
+                    is_array($aTarget)
+                    && !empty($aTarget);
+
+                $bEnabled =
+                    $bFound
+                    && !empty($aTarget['enabled']);
+
+                $sStatus =
+                    !$bFound
+                        ? 'missing'
+                        : (
+                            !$bEnabled
+                                ? 'disabled'
+                                : 'satisfied'
+                        );
+
+                $aDependency = array(
+                    'module' => $sModuleName,
+                    'module_title' => $sModuleTitle,
+                    'module_enabled' => $bModuleEnabled,
+
+                    'dependency' => $sDependency,
+
+                    'declared_value' =>
+                        $sDeclaredValue,
+
+                    'declared_value_semantics' =>
+                        'display_label_in_una_core_dependency_check_not_version_constraint',
+
+                    'status' => $sStatus,
+
+                    'target_name' =>
+                        $bFound
+                            ? (string)(
+                                $aTarget['name']
+                                ?? ''
+                            )
+                            : '',
+
+                    'target_uri' =>
+                        $bFound
+                            ? (string)(
+                                $aTarget['uri']
+                                ?? ''
+                            )
+                            : '',
+
+                    'target_version' =>
+                        $bFound
+                            ? (string)(
+                                $aTarget['version']
+                                ?? ''
+                            )
+                            : '',
+
+                    'target_enabled' =>
+                        $bEnabled,
+
+                    'install_check_dependencies' =>
+                        $bInstallChecks,
+
+                    'enable_check_dependencies' =>
+                        $bEnableChecks,
+
+                    'update_check_dependencies' =>
+                        $bUpdateChecks,
+                );
+
+                $aDependencies[] =
+                    $aDependency;
+
+                if ($sStatus !== 'satisfied') {
+                    $aUnsatisfiedDependencies[] =
+                        $aDependency;
+                }
+            }
+        }
+
+        $aEvidence = array(
+            'scope' =>
+                'registered_module_package_compatibility',
+
+            'una_version' =>
+                $sUnaVersion,
+
+            'modules_checked' =>
+                $iModulesChecked,
+
+            'compatible_with_declared_count' =>
+                $iCompatibleDeclarations,
+
+            'una_core_compatible_count' =>
+                $iCompatible,
+
+            'una_core_incompatible_count' =>
+                count($aIncompatible),
+
+            'unverified_count' =>
+                count($aUnverified),
+
+            'incompatible_modules' =>
+                $aIncompatible,
+
+            'unverified_modules' =>
+                $aUnverified,
+
+            'dependency_module_count' =>
+                $iDependencyModules,
+
+            'dependency_declaration_count' =>
+                $iDependencyDeclarations,
+
+            'dependency_enforcement_module_count' =>
+                $iDependencyEnforcementModules,
+
+            'dependency_enforcement_missing' =>
+                $aDependencyEnforcementMissing,
+
+            'dependencies' =>
+                $aDependencies,
+
+            'unsatisfied_dependency_count' =>
+                count($aUnsatisfiedDependencies),
+
+            'unsatisfied_dependencies' =>
+                $aUnsatisfiedDependencies,
+
+            'compatible_with_semantics' =>
+                'Mirrors UNA core _isCompatibleWith(): current UNA version >= any declared compatible_with entry.',
+
+            'dependency_semantics' =>
+                'Mirrors UNA actionCheckDependencies(): dependency identifier must resolve to an installed and enabled module; the array value is not version-compared.',
+
+            'unregistered_packages_evaluated' =>
+                false,
+
+            'changes_applied' =>
+                false,
+        );
+
+        /*
+         * Compatibility metadata is an installation/package
+         * signal. Do not call it a current fatal runtime failure
+         * without stronger evidence.
+         */
+        if (
+            !empty($aIncompatible)
+            || !empty($aUnsatisfiedDependencies)
+            || !empty($aUnverified)
+        ) {
+            $this->add(
+                'compatibility',
+                'warning',
+                'Installed module compatibility requires review',
+                'Doctor found an incompatible or unverifiable registered module package declaration, or a declared dependency that is missing or disabled. No repair or package change was made.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        /*
+         * A package can declare dependencies without wiring
+         * check_dependencies into its install/enable/update
+         * operations. Keep this visible without reducing health
+         * when the dependency itself is currently satisfied.
+         */
+        if (!empty($aDependencyEnforcementMissing)) {
+            $this->add(
+                'compatibility',
+                'info',
+                'Module dependencies are satisfied but installer enforcement is not configured',
+                'Doctor found module dependency declarations whose package operation arrays do not enable UNA check_dependencies. Current declared dependencies are satisfied, but UNA installer enforcement is not configured for those packages.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        $this->add(
+            'compatibility',
+            'ok',
+            'Installed module compatibility declarations are satisfied',
+            'Doctor evaluated registered module packages against the current UNA version using UNA core compatible_with semantics and checked declared dependencies using UNA installed-and-enabled semantics.',
+            $aEvidence
+        );
+    }
+
+
+    /**
+     * Extract a simple PHP array body from install/config.php
+     * without executing the module's PHP file.
+     */
+    protected function extractSimpleConfigArrayBody(
+        $sSource,
+        $sKey
+    ) {
+        $sPattern =
+            "~['\"]"
+            . preg_quote($sKey, '~')
+            . "['\"]\\s*=>\\s*(?:array\\s*\\((.*?)\\)|\\[(.*?)\\])~s";
+
+        $aMatch = array();
+
+        if (
+            preg_match(
+                $sPattern,
+                $sSource,
+                $aMatch
+            ) !== 1
+        ) {
+            return null;
+        }
+
+        if (
+            array_key_exists(1, $aMatch)
+            && $aMatch[1] !== ''
+        ) {
+            return (string)$aMatch[1];
+        }
+
+        if (array_key_exists(2, $aMatch))
+            return (string)$aMatch[2];
+
+        return '';
+    }
+
+
+    protected function parseQuotedStringList($sBody)
+    {
+        $aValues = array();
+        $aMatches = array();
+
+        $iMatched =
+            preg_match_all(
+                "~['\"]([^'\"]+)['\"]~",
+                (string)$sBody,
+                $aMatches
+            );
+
+        if (
+            $iMatched === false
+            || $iMatched < 1
+        ) {
+            return $aValues;
+        }
+
+        foreach (
+            ($aMatches[1] ?? array())
+            as $sValue
+        ) {
+            $sValue =
+                trim((string)$sValue);
+
+            if (
+                $sValue !== ''
+                && !in_array(
+                    $sValue,
+                    $aValues,
+                    true
+                )
+            ) {
+                $aValues[] =
+                    $sValue;
+            }
+        }
+
+        return $aValues;
+    }
+
+
+    protected function parseDependencyPairs($sBody)
+    {
+        $aPairs = array();
+        $aMatches = array();
+
+        $iMatched =
+            preg_match_all(
+                "~['\"]([^'\"]+)['\"]\\s*=>\\s*['\"]([^'\"]*)['\"]~",
+                (string)$sBody,
+                $aMatches,
+                PREG_SET_ORDER
+            );
+
+        if (
+            $iMatched === false
+            || $iMatched < 1
+        ) {
+            return $aPairs;
+        }
+
+        foreach ($aMatches as $aMatch) {
+            $sIdentifier =
+                trim(
+                    (string)(
+                        $aMatch[1]
+                        ?? ''
+                    )
+                );
+
+            $sDeclaredValue =
+                trim(
+                    (string)(
+                        $aMatch[2]
+                        ?? ''
+                    )
+                );
+
+            if ($sIdentifier === '')
+                continue;
+
+            $aPairs[$sIdentifier] =
+                $sDeclaredValue;
+        }
+
+        return $aPairs;
+    }
+
+
+    protected function configOperationChecksDependencies(
+        $sSource,
+        $sOperation
+    ) {
+        $sBody =
+            $this->extractSimpleConfigArrayBody(
+                $sSource,
+                $sOperation
+            );
+
+        if ($sBody === null)
+            return false;
+
+        return preg_match(
+            "~['\"]check_dependencies['\"]\\s*=>\\s*1\\b~",
+            $sBody
+        ) === 1;
+    }
+
+
+    /**
+     * Ask UNA's own version service whether a newer system
+     * target is currently advertised.
+     *
+     * This check does not download, unpack, execute or schedule
+     * an upgrade patch.
+     */
+    protected function scanUnaUpgradeTargetIntelligence()
+    {
+        $sCurrentVersion =
+            function_exists('bx_get_ver')
+                ? (string)bx_get_ver()
+                : (
+                    defined('BX_DOL_VERSION')
+                        ? (string)BX_DOL_VERSION
+                        : ''
+                );
+
+        $sConfiguredChannel =
+            (string)getParam(
+                'sys_upgrade_channel'
+            );
+
+        $sEffectiveChannel =
+            strtolower($sConfiguredChannel) === 'beta'
+                ? 'beta'
+                : 'stable';
+
+        $aEvidence = array(
+            'scope' =>
+                'official_una_upgrade_target',
+
+            'current_una_version' =>
+                $sCurrentVersion,
+
+            'configured_upgrade_channel' =>
+                $sConfiguredChannel,
+
+            'effective_upgrade_feed' =>
+                $sEffectiveChannel,
+
+            'latest_advertised_version' =>
+                '',
+
+            'newer_target_available' =>
+                false,
+
+            'patch_metadata_available' =>
+                false,
+
+            'patch_version' =>
+                '',
+
+            'patch_md5_present' =>
+                false,
+
+            'patch_url_present' =>
+                false,
+
+            'metadata_source' =>
+                'una_core_BxDolUpgrader_getVersionUpdateInfo',
+
+            'target_requirements_evaluated' =>
+                false,
+
+            'target_patch_downloaded' =>
+                false,
+
+            'target_patch_check_executed' =>
+                false,
+
+            'staged_patch_detected' =>
+                false,
+
+            'staged_patch_filename' =>
+                '',
+
+            'staged_patch_bytes' =>
+                0,
+
+            'staged_patch_md5_verified' =>
+                false,
+
+            'staged_patch_trusted_for_static_inspection' =>
+                false,
+
+            'staged_patch_trust_reason' =>
+                '',
+
+            'staged_patch_structure_inspected' =>
+                false,
+
+            'staged_patch_structure_valid' =>
+                false,
+
+            'staged_patch_check_file_present' =>
+                false,
+
+            'staged_patch_version_file_present' =>
+                false,
+
+            'staged_patch_upgrade_cron_present' =>
+                false,
+
+            'staged_target_version_read' =>
+                false,
+
+            'staged_target_version' =>
+                '',
+
+            'staged_target_version_matches_patch' =>
+                false,
+
+            'staged_target_version_source' =>
+                '',
+
+            'staged_check_bytes' =>
+                0,
+
+            'staged_check_sha256' =>
+                '',
+
+            'staged_check_static_only' =>
+                true,
+
+            'staged_static_evidence_found' =>
+                false,
+
+            'staged_static_php_thresholds' =>
+                array(),
+
+            'staged_static_highest_php_threshold' =>
+                '',
+
+            'staged_static_php_threshold_met' =>
+                null,
+
+            'staged_static_extension_checks' =>
+                array(),
+
+            'staged_static_missing_extensions' =>
+                array(),
+
+            'staged_static_observed_checks_met' =>
+                null,
+
+            'staged_static_preflight_scope' =>
+                'literal_patterns_only',
+
+            'staged_full_target_preflight_executed' =>
+                false,
+
+            'staged_full_target_preflight_certified' =>
+                false,
+
+            'changes_applied' =>
+                false,
+        );
+
+        if (!class_exists('BxDolUpgrader')) {
+            $aEvidence['reason'] =
+                'una_upgrader_class_unavailable';
+
+            $this->add(
+                'compatibility',
+                'info',
+                'UNA upgrade target status could not be verified',
+                'Doctor could not access UNA core upgrade metadata. No target version was assumed.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        try {
+            $oUpgrader =
+                new BxDolUpgrader();
+
+            $aInfo =
+                $oUpgrader
+                    ->getVersionUpdateInfo();
+
+        } catch (Throwable $e) {
+            $aEvidence['reason'] =
+                'official_version_metadata_request_failed';
+
+            $aEvidence['error'] =
+                $e->getMessage();
+
+            $this->add(
+                'compatibility',
+                'info',
+                'UNA upgrade target status could not be verified',
+                'UNA official version metadata could not be retrieved. Doctor made no upgrade-readiness assumption.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        if (
+            !is_array($aInfo)
+            || empty($aInfo['latest_version'])
+        ) {
+            $aEvidence['reason'] =
+                'latest_version_not_supplied';
+
+            $this->add(
+                'compatibility',
+                'info',
+                'UNA upgrade target status could not be verified',
+                'UNA did not return a usable latest-version value. Doctor made no future-version compatibility claim.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        $sLatestVersion =
+            (string)$aInfo['latest_version'];
+
+        $bNewer =
+            $sCurrentVersion !== ''
+            && version_compare(
+                strtolower($sLatestVersion),
+                strtolower($sCurrentVersion),
+                '>'
+            );
+
+        $aPatch =
+            isset($aInfo['patch'])
+            && is_array($aInfo['patch'])
+                ? $aInfo['patch']
+                : array();
+
+        $aEvidence['latest_advertised_version'] =
+            $sLatestVersion;
+
+        $aEvidence['newer_target_available'] =
+            (bool)$bNewer;
+
+        $aEvidence['patch_metadata_available'] =
+            !empty($aPatch);
+
+        $aEvidence['patch_version'] =
+            (string)(
+                $aPatch['ver']
+                ?? ''
+            );
+
+        $aEvidence['patch_md5_present'] =
+            !empty($aPatch['md5']);
+
+        $aEvidence['patch_url_present'] =
+            !empty($aPatch['url']);
+
+        /*
+         * A patch may already exist in UNA tmp after an
+         * administrator or UNA core downloaded it.
+         *
+         * Doctor never downloads the patch here. If a matching
+         * local ZIP exists, Doctor inspects its archive directory
+         * only. No archive content is extracted or executed.
+         */
+        if (
+            $bNewer
+            && !empty($aPatch)
+        ) {
+            $aStaged =
+                $this->inspectStagedUnaUpgradePatch(
+                    $sCurrentVersion,
+                    $aPatch
+                );
+
+            foreach (
+                $aStaged
+                as $sKey => $mixedValue
+            ) {
+                $aEvidence[$sKey] =
+                    $mixedValue;
+            }
+        }
+
+        if (!$bNewer) {
+            $aEvidence['reason'] =
+                'no_newer_target_advertised';
+
+            $this->add(
+                'compatibility',
+                'ok',
+                'No newer UNA upgrade target is currently advertised',
+                'Doctor checked UNA official version metadata for the configured upgrade channel. The advertised version is not newer than the currently installed UNA version. This does not certify compatibility with any future release.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        if (!empty($aPatch)) {
+            $aEvidence['reason'] =
+                'newer_target_and_patch_metadata_available';
+
+            $this->add(
+                'compatibility',
+                'info',
+                'A newer UNA upgrade target is advertised',
+                'UNA official metadata reports a newer version and provides patch metadata. Doctor has not downloaded or executed the patch, so target-specific PHP and environment requirements have not yet been evaluated.',
+                $aEvidence
+            );
+
+            return;
+        }
+
+        $aEvidence['reason'] =
+            'newer_target_without_patch_metadata';
+
+        $this->add(
+            'compatibility',
+            'info',
+            'A newer UNA version is advertised without upgrade patch metadata',
+            'UNA official metadata reports a newer version, but no upgrade patch metadata was supplied. Doctor cannot evaluate the target package from this response.',
+            $aEvidence
+        );
+    }
+
+
+    /**
+     * Inspect an UNA system upgrade ZIP already present in tmp.
+     *
+     * Read-only:
+     * - does not download
+     * - does not extract
+     * - does not include check.php
+     * - does not schedule an upgrade
+     */
+    protected function inspectStagedUnaUpgradePatch(
+        $sCurrentVersion,
+        array $aPatch
+    ) {
+        $aResult = array(
+            'staged_patch_detected' => false,
+            'staged_patch_filename' => '',
+            'staged_patch_bytes' => 0,
+            'staged_patch_md5_verified' => false,
+            'staged_patch_trusted_for_static_inspection' => false,
+            'staged_patch_trust_reason' => '',
+            'staged_patch_structure_inspected' => false,
+            'staged_patch_structure_valid' => false,
+            'staged_patch_check_file_present' => false,
+            'staged_patch_version_file_present' => false,
+            'staged_patch_upgrade_cron_present' => false,
+            'staged_target_version_read' => false,
+            'staged_target_version' => '',
+            'staged_target_version_matches_patch' => false,
+            'staged_target_version_source' => '',
+            'staged_check_bytes' => 0,
+            'staged_check_sha256' => '',
+            'staged_check_static_only' => true,
+            'staged_static_evidence_found' => false,
+            'staged_static_php_thresholds' => array(),
+            'staged_static_highest_php_threshold' => '',
+            'staged_static_php_threshold_met' => null,
+            'staged_static_extension_checks' => array(),
+            'staged_static_missing_extensions' => array(),
+            'staged_static_observed_checks_met' => null,
+            'staged_static_preflight_scope' => 'literal_patterns_only',
+            'staged_full_target_preflight_executed' => false,
+            'staged_full_target_preflight_certified' => false,
+        );
+
+        $sPatchVersion =
+            trim(
+                (string)(
+                    $aPatch['ver']
+                    ?? ''
+                )
+            );
+
+        if (
+            $sCurrentVersion === ''
+            || $sPatchVersion === ''
+        ) {
+            return $aResult;
+        }
+
+        /*
+         * Remote version metadata must never become an arbitrary
+         * filesystem path.
+         */
+        if (
+            preg_match(
+                '/^[A-Za-z0-9._-]+$/',
+                $sCurrentVersion
+            ) !== 1
+            || preg_match(
+                '/^[A-Za-z0-9._-]+$/',
+                $sPatchVersion
+            ) !== 1
+        ) {
+            return $aResult;
+        }
+
+        $sFilename =
+            'patch_'
+            . $sCurrentVersion
+            . '_'
+            . $sPatchVersion
+            . '.zip';
+
+        $sPath =
+            rtrim(
+                BX_DIRECTORY_PATH_TMP,
+                DIRECTORY_SEPARATOR
+            )
+            . DIRECTORY_SEPARATOR
+            . $sFilename;
+
+        $aResult['staged_patch_filename'] =
+            $sFilename;
+
+        if (!is_file($sPath))
+            return $aResult;
+
+        $aResult['staged_patch_detected'] =
+            true;
+
+        $aResult['staged_patch_bytes'] =
+            (int)@filesize($sPath);
+
+        $sExpectedMd5 =
+            strtolower(
+                trim(
+                    (string)(
+                        $aPatch['md5']
+                        ?? ''
+                    )
+                )
+            );
+
+        if (
+            preg_match(
+                '/^[a-f0-9]{32}$/',
+                $sExpectedMd5
+            ) !== 1
+        ) {
+            $aResult['staged_patch_trust_reason'] =
+                'official_patch_md5_unavailable_or_invalid';
+
+            return $aResult;
+        }
+
+        $sActualMd5 =
+            strtolower(
+                (string)@md5_file(
+                    $sPath
+                )
+            );
+
+        $aResult['staged_patch_md5_verified'] =
+            $sActualMd5 !== ''
+            && hash_equals(
+                $sExpectedMd5,
+                $sActualMd5
+            );
+
+        if (!$aResult['staged_patch_md5_verified']) {
+            $aResult['staged_patch_trust_reason'] =
+                'staged_patch_md5_mismatch';
+
+            return $aResult;
+        }
+
+        if (!class_exists('ZipArchive')) {
+            $aResult['staged_patch_trust_reason'] =
+                'ziparchive_unavailable';
+
+            return $aResult;
+        }
+
+        $oZip =
+            new ZipArchive();
+
+        if (
+            $oZip->open($sPath)
+            !== true
+        ) {
+            return $aResult;
+        }
+
+        $aResult['staged_patch_structure_inspected'] =
+            true;
+
+        $sCurrentNormalized =
+            str_replace(
+                array('-', '_', ' '),
+                '.',
+                $sCurrentVersion
+            );
+
+        $sPatchNormalized =
+            str_replace(
+                array('-', '_', ' '),
+                '.',
+                $sPatchVersion
+            );
+
+        $sPrefix =
+            'files/'
+            . $sCurrentNormalized
+            . '-'
+            . $sPatchNormalized
+            . '/';
+
+        $sCheck =
+            $sPrefix
+            . 'check.php';
+
+        $sVersion =
+            $sPrefix
+            . 'files/inc/version.inc.php';
+
+        $aResult['staged_patch_check_file_present'] =
+            $oZip->locateName(
+                $sCheck
+            ) !== false;
+
+        $aResult['staged_patch_version_file_present'] =
+            $oZip->locateName(
+                $sVersion
+            ) !== false;
+
+        $aResult['staged_patch_upgrade_cron_present'] =
+            $oZip->locateName(
+                'BxDolUpgradeCron.php'
+            ) !== false;
+
+        $aResult['staged_patch_structure_valid'] =
+            $aResult['staged_patch_check_file_present']
+            && $aResult['staged_patch_version_file_present']
+            && $aResult['staged_patch_upgrade_cron_present'];
+
+        if (!$aResult['staged_patch_structure_valid']) {
+            $aResult['staged_patch_trust_reason'] =
+                'invalid_patch_structure';
+
+            $oZip->close();
+
+            return $aResult;
+        }
+
+        /*
+         * Read target version metadata as inert text only.
+         */
+        $aResult['staged_target_version_source'] =
+            $sVersion;
+
+        $aVersionStat =
+            $oZip->statName($sVersion);
+
+        if (
+            is_array($aVersionStat)
+            && isset($aVersionStat['size'])
+            && (int)$aVersionStat['size'] > 0
+            && (int)$aVersionStat['size'] <= 65536
+        ) {
+            $sVersionSource =
+                $oZip->getFromName($sVersion);
+
+            if (
+                is_string($sVersionSource)
+                && preg_match(
+                    '/define\s*\(\s*[\'"]BX_DOL_VERSION[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]\s*\)/i',
+                    $sVersionSource,
+                    $aMatch
+                ) === 1
+            ) {
+                $aResult['staged_target_version_read'] =
+                    true;
+
+                $aResult['staged_target_version'] =
+                    trim($aMatch[1]);
+
+                $aResult['staged_target_version_matches_patch'] =
+                    strcasecmp(
+                        trim($aMatch[1]),
+                        $sPatchVersion
+                    ) === 0;
+            }
+        }
+
+        if (!$aResult['staged_target_version_read']) {
+            $aResult['staged_patch_trust_reason'] =
+                'target_version_unreadable';
+
+            $oZip->close();
+
+            return $aResult;
+        }
+
+        if (!$aResult['staged_target_version_matches_patch']) {
+            $aResult['staged_patch_trust_reason'] =
+                'target_version_mismatch';
+
+            $oZip->close();
+
+            return $aResult;
+        }
+
+        $aResult['staged_patch_trusted_for_static_inspection'] =
+            true;
+
+        $aResult['staged_patch_trust_reason'] =
+            'md5_structure_and_target_identity_verified';
+
+        /*
+         * Fingerprint check.php without executing it.
+         * Doctor reads at most 512 KiB.
+         */
+        $aCheckStat =
+            $oZip->statName($sCheck);
+
+        if (
+            is_array($aCheckStat)
+            && isset($aCheckStat['size'])
+        ) {
+            $aResult['staged_check_bytes'] =
+                (int)$aCheckStat['size'];
+
+            if (
+                (int)$aCheckStat['size'] >= 0
+                && (int)$aCheckStat['size'] <= 524288
+            ) {
+                $sCheckSource =
+                    $oZip->getFromName($sCheck);
+
+                if (is_string($sCheckSource)) {
+                    $aResult['staged_check_sha256'] =
+                        hash(
+                            'sha256',
+                            $sCheckSource
+                        );
+
+                    $aStatic =
+                        $this->extractStaticUnaTargetEvidence(
+                            $sCheckSource
+                        );
+
+                    foreach (
+                        $aStatic
+                        as $sKey => $mixedValue
+                    ) {
+                        $aResult[$sKey] =
+                            $mixedValue;
+                    }
+                }
+            }
+        }
+
+        $oZip->close();
+
+        return $aResult;
+    }
+
+
+    /**
+     * Extract only literal, statically provable runtime checks
+     * from a target check.php source string.
+     *
+     * This does not execute the target file and does not claim
+     * that observed checks represent the complete upgrade logic.
+     */
+    protected function extractStaticUnaTargetEvidence($sSource)
+    {
+        $aResult = array(
+            'staged_static_evidence_found' => false,
+            'staged_static_php_thresholds' => array(),
+            'staged_static_highest_php_threshold' => '',
+            'staged_static_php_threshold_met' => null,
+            'staged_static_extension_checks' => array(),
+            'staged_static_missing_extensions' => array(),
+            'staged_static_observed_checks_met' => null,
+            'staged_static_preflight_scope' => 'literal_patterns_only',
+            'staged_full_target_preflight_executed' => false,
+            'staged_full_target_preflight_certified' => false,
+        );
+
+        if (
+            !is_string($sSource)
+            || strlen($sSource) > 524288
+        ) {
+            return $aResult;
+        }
+
+        $aPhp = array();
+
+        if (
+            preg_match_all(
+                '/version_compare\s*\(\s*(?:PHP_VERSION|phpversion\s*\(\s*\))\s*,\s*[\'"]([^\'"]+)[\'"]\s*,\s*[\'"]<[\'"]\s*\)/i',
+                $sSource,
+                $aMatches
+            )
+        ) {
+            foreach ($aMatches[1] as $sVersion) {
+                $sVersion = trim($sVersion);
+
+                if (
+                    preg_match(
+                        '/^[0-9]+(?:\.[0-9A-Za-z-]+)+$/',
+                        $sVersion
+                    )
+                ) {
+                    $aPhp[] = $sVersion;
+                }
+            }
+        }
+
+        if (
+            preg_match_all(
+                '/PHP_VERSION_ID\s*<\s*([0-9]{5,6})/',
+                $sSource,
+                $aIdMatches
+            )
+        ) {
+            foreach ($aIdMatches[1] as $sId) {
+                $iId = (int)$sId;
+
+                $aPhp[] =
+                    intdiv($iId, 10000)
+                    . '.'
+                    . intdiv($iId % 10000, 100)
+                    . '.'
+                    . ($iId % 100);
+            }
+        }
+
+        $aPhp =
+            array_values(
+                array_unique($aPhp)
+            );
+
+        usort(
+            $aPhp,
+            function ($a, $b) {
+                return version_compare($a, $b);
+            }
+        );
+
+        $aExtensions = array();
+
+        if (
+            preg_match_all(
+                '/extension_loaded\s*\(\s*[\'"]([A-Za-z0-9_]+)[\'"]\s*\)/i',
+                $sSource,
+                $aExtMatches
+            )
+        ) {
+            foreach ($aExtMatches[1] as $sExtension) {
+                $aExtensions[] =
+                    strtolower($sExtension);
+            }
+        }
+
+        $aExtensions =
+            array_values(
+                array_unique($aExtensions)
+            );
+
+        sort($aExtensions);
+
+        $aMissing = array();
+
+        foreach ($aExtensions as $sExtension) {
+            if (!extension_loaded($sExtension))
+                $aMissing[] = $sExtension;
+        }
+
+        $aResult['staged_static_php_thresholds'] =
+            $aPhp;
+
+        $aResult['staged_static_extension_checks'] =
+            $aExtensions;
+
+        $aResult['staged_static_missing_extensions'] =
+            $aMissing;
+
+        if (!empty($aPhp)) {
+            $sHighest =
+                end($aPhp);
+
+            $aResult['staged_static_highest_php_threshold'] =
+                $sHighest;
+
+            $aResult['staged_static_php_threshold_met'] =
+                version_compare(
+                    PHP_VERSION,
+                    $sHighest,
+                    '>='
+                );
+        }
+
+        if (
+            !empty($aPhp)
+            || !empty($aExtensions)
+        ) {
+            $aResult['staged_static_evidence_found'] =
+                true;
+
+            $bPhpOkay =
+                $aResult['staged_static_php_threshold_met']
+                !== false;
+
+            $bExtensionsOkay =
+                empty($aMissing);
+
+            $aResult['staged_static_observed_checks_met'] =
+                $bPhpOkay
+                && $bExtensionsOkay;
+        }
+
+        return $aResult;
+    }
+
+
+    /**
+     * Extract required PHP modules from UNA's local Studio
+     * Tools Audit source.
+     *
+     * Parsing is deliberately narrow and read-only.
+     */
+    protected function detectUnaRequiredPhpExtensions()
+    {
+        $sRelativePath =
+            'studio/classes/BxDolStudioToolsAudit.php';
+
+        $sPath =
+            rtrim(
+                BX_DIRECTORY_PATH_ROOT,
+                DIRECTORY_SEPARATOR
+            )
+            . DIRECTORY_SEPARATOR
+            . str_replace(
+                '/',
+                DIRECTORY_SEPARATOR,
+                $sRelativePath
+            );
+
+        $aResult = array(
+            'extensions' => array(),
+            'source' => 'unavailable',
+            'source_path' => $sRelativePath,
+            'source_sha256' => '',
+            'confidence' => 'unknown',
+            'reason' => '',
+        );
+
+        if (!is_file($sPath)) {
+            $aResult['reason'] =
+                'studio_audit_source_missing';
+
+            return $aResult;
+        }
+
+        if (!is_readable($sPath)) {
+            $aResult['reason'] =
+                'studio_audit_source_not_readable';
+
+            return $aResult;
+        }
+
+        $iSize =
+            (int)@filesize($sPath);
+
+        if (
+            $iSize <= 0
+            || $iSize > 1048576
+        ) {
+            $aResult['reason'] =
+                'studio_audit_source_size_unexpected';
+
+            return $aResult;
+        }
+
+        $sSource =
+            @file_get_contents($sPath);
+
+        if ($sSource === false) {
+            $aResult['reason'] =
+                'studio_audit_source_read_failed';
+
+            return $aResult;
+        }
+
+        /*
+         * Match only UNA audit entries explicitly using:
+         *
+         * 'op' => 'module'
+         * 'val' => '<extension>'
+         */
+        $sPattern =
+            '/[\'"]php module:\s*[^\'"]+[\'"]'
+            . '\s*=>\s*array\s*\('
+            . '\s*[\'"]op[\'"]\s*=>\s*[\'"]module[\'"]'
+            . '\s*,\s*[\'"]val[\'"]\s*=>\s*[\'"]([A-Za-z0-9_]+)[\'"]'
+            . '/i';
+
+        $aMatches = array();
+
+        $iMatched =
+            preg_match_all(
+                $sPattern,
+                $sSource,
+                $aMatches
+            );
+
+        if (
+            $iMatched === false
+            || $iMatched < 1
+        ) {
+            $aResult['source_sha256'] =
+                (string)@hash_file(
+                    'sha256',
+                    $sPath
+                );
+
+            $aResult['reason'] =
+                'required_php_modules_not_found';
+
+            return $aResult;
+        }
+
+        $aExtensions =
+            array_values(
+                array_unique(
+                    $aMatches[1]
+                    ?? array()
+                )
+            );
+
+        if (empty($aExtensions)) {
+            $aResult['source_sha256'] =
+                (string)@hash_file(
+                    'sha256',
+                    $sPath
+                );
+
+            $aResult['reason'] =
+                'required_php_modules_empty';
+
+            return $aResult;
+        }
+
+        $aResult['extensions'] =
+            $aExtensions;
+
+        $aResult['source'] =
+            'una_studio_tools_audit';
+
+        $aResult['source_sha256'] =
+            (string)@hash_file(
+                'sha256',
+                $sPath
+            );
+
+        $aResult['confidence'] =
+            'local_source';
+
+        $aResult['reason'] =
+            'required_php_modules_extracted_from_local_una_audit';
+
+        return $aResult;
+    }
+
+
+    /**
+     * Read the minimum PHP version from UNA's local Studio
+     * Tools Audit source.
+     *
+     * Source parsing is deliberately narrow and read-only.
+     */
+    protected function detectUnaMinimumPhpRequirement()
+    {
+        $sRelativePath =
+            'studio/classes/BxDolStudioToolsAudit.php';
+
+        $sPath =
+            rtrim(
+                BX_DIRECTORY_PATH_ROOT,
+                DIRECTORY_SEPARATOR
+            )
+            . DIRECTORY_SEPARATOR
+            . str_replace(
+                '/',
+                DIRECTORY_SEPARATOR,
+                $sRelativePath
+            );
+
+        $aResult = array(
+            'version' => '',
+            'source' => 'unavailable',
+            'source_path' => $sRelativePath,
+            'source_sha256' => '',
+            'confidence' => 'unknown',
+            'reason' => '',
+        );
+
+        if (!is_file($sPath)) {
+            $aResult['reason'] =
+                'studio_audit_source_missing';
+
+            return $aResult;
+        }
+
+        if (!is_readable($sPath)) {
+            $aResult['reason'] =
+                'studio_audit_source_not_readable';
+
+            return $aResult;
+        }
+
+        $iSize =
+            (int)@filesize($sPath);
+
+        /*
+         * The normal UNA audit class is small. Refuse unusually
+         * large input rather than reading an unexpected file.
+         */
+        if (
+            $iSize <= 0
+            || $iSize > 1048576
+        ) {
+            $aResult['reason'] =
+                'studio_audit_source_size_unexpected';
+
+            return $aResult;
+        }
+
+        $sSource =
+            @file_get_contents($sPath);
+
+        if ($sSource === false) {
+            $aResult['reason'] =
+                'studio_audit_source_read_failed';
+
+            return $aResult;
+        }
+
+        $aPatterns = array(
+            '/\$this->sMinPhpVer\s*=\s*[\'"]([0-9]+(?:\.[0-9]+){1,2})[\'"]\s*;/',
+            '/protected\s+\$sMinPhpVer\s*=\s*[\'"]([0-9]+(?:\.[0-9]+){1,2})[\'"]\s*;/',
+        );
+
+        foreach ($aPatterns as $sPattern) {
+            $aMatch = array();
+
+            if (
+                preg_match(
+                    $sPattern,
+                    $sSource,
+                    $aMatch
+                ) === 1
+            ) {
+                $sVersion =
+                    (string)(
+                        $aMatch[1]
+                        ?? ''
+                    );
+
+                if (
+                    $sVersion !== ''
+                    && preg_match(
+                        '/^[0-9]+(?:\.[0-9]+){1,2}$/',
+                        $sVersion
+                    ) === 1
+                ) {
+                    $aResult['version'] =
+                        $sVersion;
+
+                    $aResult['source'] =
+                        'una_studio_tools_audit';
+
+                    $aResult['source_sha256'] =
+                        (string)@hash_file(
+                            'sha256',
+                            $sPath
+                        );
+
+                    $aResult['confidence'] =
+                        'local_source';
+
+                    $aResult['reason'] =
+                        'minimum_php_extracted_from_local_una_audit';
+
+                    return $aResult;
+                }
+            }
+        }
+
+        $aResult['source_sha256'] =
+            (string)@hash_file(
+                'sha256',
+                $sPath
+            );
+
+        $aResult['reason'] =
+            'minimum_php_assignment_not_found';
+
+        return $aResult;
     }
 
 

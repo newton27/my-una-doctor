@@ -14,7 +14,7 @@ $aConfig = array(
     'name' => 'my_una_doctor',
     'title' => 'My UNA Doctor',
     'note' => 'Studio-only UNA health diagnostics, integrity checks and scan history.',
-    'version' => '0.5.0',
+    'version' => '0.6.0',
     'vendor' => 'NewtronJax',
     'help_url' => '',
 
