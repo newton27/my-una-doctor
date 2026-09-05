@@ -5,9 +5,13 @@ SET @sPath = 'newton/my_una_doctor/';
 
 CREATE TABLE IF NOT EXISTS `my_una_doctor_scans` ( `id` int(10) unsigned NOT NULL AUTO_INCREMENT, `started` int(11) unsigned NOT NULL DEFAULT 0, `finished` int(11) unsigned NOT NULL DEFAULT 0, `duration_ms` int(10) unsigned NOT NULL DEFAULT 0, `health_score` tinyint(3) unsigned NOT NULL DEFAULT 0, `critical_count` int(10) unsigned NOT NULL DEFAULT 0, `warning_count` int(10) unsigned NOT NULL DEFAULT 0, `info_count` int(10) unsigned NOT NULL DEFAULT 0, `ok_count` int(10) unsigned NOT NULL DEFAULT 0, `result_json` mediumtext NOT NULL, PRIMARY KEY (`id`), KEY `finished` (`finished`), KEY `health_score` (`health_score`) ) ENGINE=InnoDB;
 
+
 CREATE TABLE IF NOT EXISTS `my_una_doctor_repairs` ( `id` int(10) unsigned NOT NULL AUTO_INCREMENT, `repair_key` varchar(64) NOT NULL, `rule` varchar(128) NOT NULL, `module` varchar(128) NOT NULL DEFAULT '', `status` varchar(32) NOT NULL DEFAULT 'planned', `created` int(11) unsigned NOT NULL DEFAULT 0, `updated` int(11) unsigned NOT NULL DEFAULT 0, `preflight_id` varchar(64) NOT NULL DEFAULT '', `arm_id` varchar(64) NOT NULL DEFAULT '', `original_state_json` mediumtext NOT NULL, `planned_state_json` mediumtext NOT NULL, `result_json` mediumtext NOT NULL, `error_text` text NOT NULL, PRIMARY KEY (`id`), UNIQUE KEY `repair_key` (`repair_key`), KEY `status` (`status`), KEY `module` (`module`), KEY `updated` (`updated`) ) ENGINE=InnoDB;
 
+
+
 CREATE TABLE IF NOT EXISTS `my_una_doctor_repair_knowledge` ( `id` int(10) unsigned NOT NULL AUTO_INCREMENT, `knowledge_key` char(64) NOT NULL, `module` varchar(128) NOT NULL, `module_version` varchar(64) NOT NULL, `file` varchar(512) NOT NULL, `reference_md5` char(32) NOT NULL, `approved_live_md5` char(32) NOT NULL, `repair_type` varchar(64) NOT NULL DEFAULT 'local_fix', `reason` text NOT NULL, `reference_sha256` char(64) NOT NULL DEFAULT '', `reference_filename` varchar(255) NOT NULL DEFAULT '', `evidence_json` mediumtext NOT NULL, `enabled` tinyint(3) unsigned NOT NULL DEFAULT 1, `created` int(11) unsigned NOT NULL DEFAULT 0, `updated` int(11) unsigned NOT NULL DEFAULT 0, PRIMARY KEY (`id`), UNIQUE KEY `knowledge_key` (`knowledge_key`), KEY `module_version` (`module`, `module_version`), KEY `enabled` (`enabled`), KEY `updated` (`updated`) ) ENGINE=InnoDB;
+
 
 -- MY UNA DOCTOR SETTINGS
 
@@ -29,6 +33,8 @@ INSERT INTO `sys_options` ( `category_id`, `name`, `caption`, `info`, `value`, `
 
 INSERT INTO `sys_options` ( `category_id`, `name`, `caption`, `info`, `value`, `type`, `extra`, `check`, `check_params`, `check_error`, `order` ) SELECT @iDoctorOptionsCategoryId, 'my_una_doctor_work_cycle_size', '_my_una_doctor_opt_work_cycle_size', '_my_una_doctor_opt_work_cycle_size_info', '30', 'select', '10,20,30', '', '', '', 3 WHERE NOT EXISTS ( SELECT 1 FROM `sys_options` WHERE `name` = 'my_una_doctor_work_cycle_size' );
 
+
+
 -- Maintenance page personalization
 
 INSERT INTO `sys_options` ( `category_id`, `name`, `caption`, `info`, `value`, `type`, `extra`, `check`, `check_params`, `check_error`, `order` ) SELECT @iDoctorOptionsCategoryId, 'my_una_doctor_maintenance_show_header', '_my_una_doctor_opt_maintenance_show_header', '_my_una_doctor_opt_maintenance_show_header_info', 'on', 'checkbox', '', '', '', '', 4 WHERE NOT EXISTS ( SELECT 1 FROM `sys_options` WHERE `name` = 'my_una_doctor_maintenance_show_header' );
@@ -44,6 +50,7 @@ INSERT INTO `sys_options` ( `category_id`, `name`, `caption`, `info`, `value`, `
 INSERT INTO `sys_options` ( `category_id`, `name`, `caption`, `info`, `value`, `type`, `extra`, `check`, `check_params`, `check_error`, `order` ) SELECT @iDoctorOptionsCategoryId, 'my_una_doctor_maintenance_return_message', '_my_una_doctor_opt_maintenance_return_message', '_my_una_doctor_opt_maintenance_return_message_info', 'Estimated return time is counting down live.', 'text', '', '', '', '', 9 WHERE NOT EXISTS ( SELECT 1 FROM `sys_options` WHERE `name` = 'my_una_doctor_maintenance_return_message' );
 
 INSERT INTO `sys_options` ( `category_id`, `name`, `caption`, `info`, `value`, `type`, `extra`, `check`, `check_params`, `check_error`, `order` ) SELECT @iDoctorOptionsCategoryId, 'my_una_doctor_maintenance_footer_message', '_my_una_doctor_opt_maintenance_footer_message', '_my_una_doctor_opt_maintenance_footer_message_info', 'Thank you for your patience while the verified workflow completes.', 'text', '', '', '', '', 10 WHERE NOT EXISTS ( SELECT 1 FROM `sys_options` WHERE `name` = 'my_una_doctor_maintenance_footer_message' );
+
 
 INSERT INTO `sys_options` ( `category_id`,`name`,`caption`,`info`,`value`, `type`,`extra`,`check`,`check_params`,`check_error`,`order` ) SELECT @iDoctorOptionsCategoryId, 'my_una_doctor_use_maintenance_page', '_my_una_doctor_opt_use_maintenance_page', '_my_una_doctor_opt_use_maintenance_page_info', 'on', 'checkbox', '', '', '', '', 11 WHERE NOT EXISTS ( SELECT 1 FROM `sys_options` WHERE `name` = 'my_una_doctor_use_maintenance_page' );
 
