@@ -2,38 +2,101 @@
 
 **Studio-only UNA CMS diagnostics and guarded repair framework**
 
-Current validated checkpoint: **0.3.4**  
+Current validated checkpoint: **0.5.0**
 Vendor: **NewtronJax**
 
-> **Diagnose first. Repair only when the evidence is clear.**
+> **Know before you upgrade. Know what changed afterward. Know where to look when something goes wrong.**
 
-My UNA Doctor analyzes UNA system health, module integrity, update readiness, database state, cron registrations, filesystem conditions and recent actionable logs. Newer 0.3.x builds add staged, evidence-driven repair controls with durable rollback state instead of performing blind automatic repairs.
+My UNA Doctor analyzes UNA application health, module integrity, maintenance and upgrade state, database consistency, cron registrations, filesystem conditions, recent actionable logs and protected repair state from inside UNA Studio.
 
-## 0.3.4 known-good checkpoint
+Version 0.5.0 extends the evidence-first repair architecture with a persistent **Module Reference Library** and read-only **Maintenance & Upgrade State Diagnostics**.
 
-Version 0.3.4 is preserved in Git as annotated tag **`v0.3.4`**.
+## 0.5.0 validated checkpoint
 
-Release verification before the tag was created:
-
-- 9 PHP files lint clean under PHP 8.3
-- 19 tracked / 19 current hashable Doctor files
-- 0 modified tracked
-- 0 missing tracked
-- 0 new/untracked
-- 0 UNA Studio changed files
-- source integrity: **clean**
-
-Known-good commit:
+Source release commit:
 
 ```text
-e2a12b20a066e0f61c2cc911a8b22fd4d51ce1da
+75a55a493e95cee33e614ea0a8339af70fa62186
 ```
 
-Documentation added after the tag lives on `main`; the `v0.3.4` source checkpoint remains unchanged.
+Release documentation:
 
-## Current architecture
+- [0.5.0 release checkpoint](docs/RELEASE-0.5.0.md)
+- [Changelog](CHANGELOG.md)
 
-The guarded repair lifecycle is intentionally staged:
+Release verification included:
+
+- registered/source version **0.5.0**;
+- module enabled;
+- **25 tracked / 25 matching** Doctor files;
+- **0 modified tracked**;
+- **0 missing tracked**;
+- all Doctor PHP files lint clean under PHP 8.3;
+- UNA hard maintenance absent;
+- UNA soft maintenance off;
+- UNA file/database versions both **15.0.0-RC1**;
+- Reference Library: **2 saved / 2 verified / 0 failed**;
+- **12** historical reference comparison sessions;
+- **2** durable reference SHA identities.
+
+## Module Reference Library
+
+Studio includes a **Module Reference Library** for preserving virgin/original or otherwise known-good module packages as repair references.
+
+Doctor can:
+
+- safely accept module ZIP packages;
+- validate archive structure and reject unsafe entries;
+- identify module identity and version;
+- create persistent reference manifests;
+- retain durable SHA-256 package identities;
+- deduplicate repeated uploads;
+- compare an installed module with a stored reference;
+- compare again without re-uploading the package;
+- classify matching, modified, missing and live-only files;
+- compare reference files with UNA tracked baselines when available;
+- preserve approved compatibility modifications;
+- preserve local repair knowledge and historical comparison evidence.
+
+Reference packages are evidence. They are not blindly copied over live modules.
+
+## Maintenance & Upgrade State Diagnostics
+
+The full health scan now contains a read-only maintenance/upgrade state detector.
+
+Current classifications:
+
+- `NORMAL`
+- `SOFT_MAINTENANCE`
+- `HARD_MAINTENANCE`
+- `STALE_HARD_LOCK`
+- `POSSIBLE_INTERRUPTED_UPGRADE`
+- `DOCTOR_PROTECTED_REPAIR`
+
+Doctor distinguishes expected maintenance created by its own protected repair workflow from unexpected hard maintenance and possible interrupted upgrade conditions.
+
+Strong interrupted-upgrade classification requires current correlated evidence, such as maintenance state plus UNA file/database version disagreement. Recent upgrade-log matches are supporting evidence only and do not independently create a failure.
+
+A six-hour hard-lock age is used as a conservative diagnostic heuristic. Doctor does **not** automatically delete `.bx_maintenance`.
+
+## Upgrade Readiness Summary
+
+0.5.0 adds a separate readiness summary scoped specifically to **maintenance and upgrade state**.
+
+Current blockers include:
+
+- active UNA hard maintenance;
+- active UNA soft maintenance;
+- UNA file/database version mismatch;
+- any active Doctor repair journal.
+
+Historical upgrade log signals are advisory and do not independently block readiness.
+
+This scope is intentionally separate from future readiness dimensions such as source/checksum eligibility, module/database consistency, PHP/UNA compatibility, server health and backup/recoverability.
+
+## Guarded repair architecture
+
+The repair lifecycle remains intentionally staged:
 
 ```text
 Scan
@@ -61,43 +124,40 @@ Before supported runtime protection is allowed, Doctor establishes a three-part 
 2. **Enable UNA soft maintenance**
 3. **Pause only the verified generator cron**
 
-The compression step is critical. During testing, soft maintenance left Studio HTML available but `gzip_loader.php` returned HTTP 503, breaking compressed Studio styling. Disabling template-cache compression first causes Studio to use direct `/cache_public/...` assets and keeps the administrative recovery interface usable.
-
-Disarm reverses the barrier safely: exact generator schedule first, then exact maintenance state, then exact original compression value, with independent verification at each stage.
+Disarm restores the exact original generator schedule, maintenance state and template-compression value with independent verification.
 
 See [Repair Barrier 2](docs/REPAIR-BARRIER-2.md).
 
 ## Guarded runtime protection
 
-Doctor can identify a module that is source-clean but whose update readiness is distorted by a large population of generated files inside its module directory.
+Doctor can identify a module that is source-clean but whose update readiness is distorted by generated runtime files inside its module directory.
 
-For a verified candidate, 0.3.4 can:
+For a verified candidate, Doctor can:
 
 - inventory the runtime tree immediately before mutation;
-- produce a deterministic protection fingerprint;
+- produce deterministic protection fingerprints;
 - refuse symlinks, hardlinks and special files;
 - require a same-filesystem safety destination;
 - preserve runtime-root filesystem metadata;
-- atomically separate the whole generated runtime tree rather than moving thousands of files individually;
+- atomically separate a generated runtime tree;
 - restore only legitimate tracked runtime files to the live module path;
-- verify the protected original independently;
+- independently verify the protected original;
 - recover the original runtime tree if protection fails;
-- restore a protected runtime tree back to the live module path;
-- plan post-update runtime merging without automatically overwriting collisions.
+- plan post-update runtime merging without blindly overwriting collisions.
 
-The proven large-tree test contained **18,027 physical files** and **3,059,207,616 bytes** of runtime content.
+The proven large-tree workflow has handled more than **18,000 files** and approximately **3 GB** of generated runtime content while preserving durable evidence.
 
 See [Guarded Runtime Protection](docs/RUNTIME-PROTECTION.md).
 
-## Module integrity and update readiness
+## Module integrity
 
 Doctor uses UNA Studio-compatible hashing semantics and separately reports:
 
-- tracked files,
-- current hashable files,
-- modified tracked files,
-- missing tracked files,
-- new/untracked files,
+- tracked files;
+- current hashable files;
+- modified tracked files;
+- missing tracked files;
+- new/untracked files;
 - the final changed-file set UNA Studio would use for update readiness.
 
 `getModuleIntegritySnapshot()` exposes complete, untruncated integrity data for guarded planning and verification.
@@ -108,7 +168,7 @@ Doctor does **not** silently rebaseline a third-party module merely to make an u
 
 Repair mutation begins only after the original state required for rollback has been persisted.
 
-Journal state tracks the repair lifecycle, including arming, runtime protection, runtime restoration and unresolved rollback conditions. An active or unresolved journal is itself a safety condition and blocks a new repair workflow.
+Journal state tracks arming, maintenance, generator pause, runtime protection, runtime restoration, merging and unresolved rollback conditions. An active or unresolved journal is itself a safety condition and blocks a new repair workflow.
 
 Repair state is kept separate from the protected third-party module content.
 
@@ -116,36 +176,50 @@ Repair state is kept separate from the protected third-party module content.
 
 My UNA Doctor intentionally fails closed when required evidence is incomplete or contradictory.
 
-0.3.4 does not automatically:
+0.5.0 does not automatically:
 
+- clear UNA hard maintenance;
+- toggle soft maintenance merely because a diagnostic sees it;
 - rewrite third-party checksum baselines;
 - start a module update merely because a repair is armed;
 - overwrite post-update runtime collisions;
 - repair findings whose ownership or intent is ambiguous;
-- ignore a failed rollback or unresolved journal;
-- alter unrelated cron registrations.
+- ignore a failed rollback or unresolved repair journal;
+- alter unrelated cron registrations;
+- treat historical upgrade logs alone as proof of a current failure.
 
-Unknown integrity state is reported as unknown/warning rather than clean.
+Unknown integrity or compatibility state is reported as unknown/warning rather than clean.
 
 ## Diagnostic coverage
 
 The broader Doctor scanner includes checks for:
 
-- UNA/PHP compatibility and versions;
+- UNA/PHP versions and baseline compatibility;
 - common PHP extensions;
 - writable UNA runtime directories;
 - disk-space safety;
 - database connectivity and schema conditions;
+- UNA file/database version agreement;
+- maintenance and possible interrupted-upgrade state;
+- maintenance-state upgrade readiness;
 - module registration and install metadata;
 - module file integrity and update readiness;
 - notification/alert registration integrity;
 - cron file references and ownership;
 - recent actionable UNA/PHP logs;
 - scan history;
-- supported Albums and Timeline media relationship integrity.
+- supported Albums and Timeline media relationship integrity;
+- active My UNA Doctor protected repair state.
+
+## Historical checkpoints
+
+Version **0.3.4** remains an immutable known-good recovery/reference point and is preserved as tag **`v0.3.4`**.
+
+The 0.4.0 development checkpoint introduced the Module Reference Library foundation and durable reference identities. Version 0.5.0 builds on that work with maintenance and upgrade-state intelligence.
 
 ## Documentation
 
+- [0.5.0 release checkpoint](docs/RELEASE-0.5.0.md)
 - [0.3.4 release checkpoint](docs/RELEASE-0.3.4.md)
 - [Repair Barrier 2](docs/REPAIR-BARRIER-2.md)
 - [Guarded Runtime Protection](docs/RUNTIME-PROTECTION.md)
@@ -167,7 +241,8 @@ newton/
     │   ├── langs/
     │   └── sql/
     ├── template/
-    │   └── images/icons/std-icon.svg
+    │   ├── images/icons/std-icon.svg
+    │   └── media/
     ├── INSTALLATION.txt
     ├── README.md
     └── request.php
@@ -177,4 +252,4 @@ The Git repository may contain additional development documentation that is not 
 
 ## Development rule
 
-Treat `v0.3.4` as an immutable recovery/reference point. New development belongs on commits after that tag and should be linted, exercised, integrity-checked and deliberately rebaselined only when the changed files are known and reviewed.
+Treat validated release checkpoints as immutable references. New development belongs after the release checkpoint and should be linted, exercised, integrity-checked and deliberately rebaselined only when the changed files are known and reviewed.
