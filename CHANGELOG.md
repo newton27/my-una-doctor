@@ -4,6 +4,22 @@ All notable development milestones for My UNA Doctor are recorded here.
 
 The project follows a conservative safety model: **Diagnose first. Repair only when the evidence is clear.**
 
+## 0.6.0 — Compatibility & Upgrade Intelligence
+
+- Added installed UNA/PHP compatibility detection from local UNA source.
+- Added required PHP extension verification.
+- Added module compatibility and dependency checks using UNA semantics.
+- Added official UNA upgrade-target awareness.
+- Added trust-gated inspection of staged official upgrade packages.
+- Added limited static compatibility evidence without executing upgrade code.
+- Updated package documentation for the final 0.6.0 release.
+
+Source release commit:
+
+`5ea1d6511acd1f97f80fc55424ee905d24791aa9`
+
+See [0.6.0 release checkpoint](docs/RELEASE-0.6.0.md).
+
 ## 0.5.0 — Reference Library and Upgrade Readiness
 
 ### Module Reference Library
