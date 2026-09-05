@@ -4,6 +4,94 @@ All notable development milestones for My UNA Doctor are recorded here.
 
 The project follows a conservative safety model: **Diagnose first. Repair only when the evidence is clear.**
 
+## 0.5.0 — Reference Library and Upgrade Readiness
+
+### Module Reference Library
+
+- Added the Studio-only **Module Reference Library** for virgin/original or otherwise known-good module packages.
+- Added safe ZIP intake with archive validation before extraction.
+- Preserved the `is_uploaded_file()` upload safety check.
+- Added module identity/version detection and persistent reference manifests.
+- Added durable SHA-256 package identities and package deduplication.
+- Added saved comparison history and **Compare Again** without requiring a re-upload.
+- Added installed-vs-reference classification for matching, modified, missing and live-only files.
+- Added comparison against UNA tracked baselines when available.
+- Added approved compatibility modifications and Local Repair Knowledge so a legitimate known deviation is not treated as an unexplained repair target.
+- Persistent reference packages remain evidence sources; Doctor does not blindly overwrite live modules from a reference.
+
+### Maintenance & Upgrade State Diagnostics
+
+- Added a read-only maintenance/upgrade detector to the main health scan.
+- Added classifications:
+  - `NORMAL`
+  - `SOFT_MAINTENANCE`
+  - `HARD_MAINTENANCE`
+  - `STALE_HARD_LOCK`
+  - `POSSIBLE_INTERRUPTED_UPGRADE`
+  - `DOCTOR_PROTECTED_REPAIR`
+- Added correlation with active Doctor repair-journal state so expected Doctor maintenance is distinguishable from an interrupted UNA upgrade.
+- Added a conservative six-hour stale hard-lock threshold as diagnostic evidence only.
+- Added strong interrupted-upgrade correlation for maintenance plus UNA file/database version disagreement.
+- Added bounded supporting inspection of `logs/sys_modules.log` for upgrade-related signals.
+- Historical upgrade log signals are advisory only and do not independently reduce health.
+- Doctor does not automatically remove `.bx_maintenance` or toggle soft maintenance from this diagnostic path.
+
+### Upgrade Readiness Summary
+
+- Added a separate readiness finding scoped to **maintenance and upgrade state**.
+- Current blockers include:
+  - active UNA hard maintenance;
+  - active UNA soft maintenance;
+  - UNA file/database version mismatch;
+  - any active Doctor repair journal.
+- A maintenance/version mismatch can raise the readiness finding to critical.
+- Historical log signals do not independently block readiness.
+- The scope is intentionally separate from future readiness dimensions such as source/checksum eligibility, module/database consistency, PHP/UNA compatibility, server health and backup/recoverability.
+
+### Maintenance-page and media assets
+
+- Added `MyUnaDoctorMaintenance.php` as a self-contained public maintenance-page builder.
+- Added Doctor-owned server poster/video assets used by the maintenance presentation.
+- Added the two media assets to the 0.5.0 tracked-file baseline.
+
+### Validation
+
+Before the 0.5.0 release checkpoint was frozen:
+
+- registered/source version: `0.5.0`;
+- module enabled;
+- Doctor tracked rows: 25;
+- matching tracked rows: 25;
+- modified tracked: 0;
+- missing tracked: 0;
+- all Doctor PHP files linted clean under PHP 8.3;
+- `.bx_maintenance`: absent;
+- UNA soft maintenance: off;
+- UNA file version: `15.0.0-RC1`;
+- UNA database version: `15.0.0-RC1`;
+- Reference Library: 2 saved / 2 verified / 0 failed;
+- historical reference comparison sessions: 12;
+- durable reference SHA identities: 2.
+
+A nine-case synthetic maintenance/readiness matrix passed against a temporary scanner copy without changing live UNA maintenance, repair journals or checksum baselines.
+
+Source release commit:
+
+```text
+75a55a493e95cee33e614ea0a8339af70fa62186
+```
+
+See [0.5.0 release checkpoint](docs/RELEASE-0.5.0.md).
+
+## 0.4.0 — Reference Library checkpoint
+
+- Added the initial Module Reference Library engine and Studio route.
+- Added persistent immutable SHA-256 reference storage.
+- Added reference manifests, package validation and installed/reference comparison.
+- Added approved modification handling and Local Repair Knowledge.
+- Added durable comparison sessions and re-comparison of saved packages.
+- Preserved this milestone as an internal frozen checkpoint before 0.5.0 maintenance/upgrade diagnostics were added.
+
 ## 0.3.4 — Known-good checkpoint
 
 ### Repair Barrier 2
