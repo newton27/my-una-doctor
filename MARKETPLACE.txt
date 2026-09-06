@@ -1,16 +1,16 @@
-MY UNA DOCTOR — UNA MARKETPLACE PACKAGE NOTES
-=================================================
+MY UNA MODULE DOCTOR — UNA MARKETPLACE PACKAGE NOTES
+========================================================
 
 Product title:
-My UNA Doctor
+My UNA Module Doctor
 
-Internal module name:
+Marketplace Name — MUST MATCH install/config.php EXACTLY:
 my_una_doctor
 
 Vendor:
 NewtronJax
 
-Version:
+Current package version:
 0.6.0
 
 Category:
@@ -20,13 +20,13 @@ SHORT DESCRIPTION
 -----------------
 Studio-only health, compatibility and upgrade-readiness diagnostics for UNA CMS, with guarded repair workflows, module integrity checks and protected runtime-content handling.
 
-MARKETPLACE SUMMARY
--------------------
+MARKETPLACE SUMMARY / PRODUCT INFO
+----------------------------------
 Know before you upgrade. Know what changed afterward. Know where to look when something goes wrong.
 
-My UNA Doctor gives UNA administrators an evidence-driven view of site health from inside Studio. It checks UNA/PHP compatibility, required PHP extensions, module declarations and dependencies, file integrity, database consistency, maintenance state, cron registrations, filesystem conditions and recent actionable logs.
+My UNA Module Doctor gives UNA administrators an evidence-driven view of site health from inside Studio. It checks UNA/PHP compatibility, required PHP extensions, module declarations and dependencies, file integrity, database consistency, maintenance state, cron registrations, filesystem conditions and recent actionable logs.
 
-Version 0.6.0 adds Compatibility & Upgrade Intelligence. Doctor can check UNA's configured upgrade feed, recognize an already-staged official target package, verify its MD5 and structure, confirm target identity and inspect a limited set of literal compatibility requirements without executing target upgrade code.
+The current release includes Compatibility & Upgrade Intelligence. Doctor can check UNA's configured upgrade feed, recognize an already-staged official target package, verify its MD5 and structure, confirm target identity and inspect a limited set of literal compatibility requirements without executing target upgrade code.
 
 FEATURES
 --------
@@ -50,9 +50,47 @@ SAFETY NOTICE
 -------------
 Back up your website before attempting repairs or upgrades. A current verified backup protects your site if a repair, update or server problem does not go as expected.
 
-My UNA Doctor does not blindly repair ambiguous findings, silently rewrite third-party baselines or execute staged UNA upgrade code during a normal health scan.
+My UNA Module Doctor does not blindly repair ambiguous findings, silently rewrite third-party baselines or execute staged UNA upgrade code during a normal health scan.
 
-MARKETPLACE / STUDIO ARTWORK
-----------------------------
-The package includes its marketplace cover artwork and Studio launcher icon. Product-detail information shown by UNA Studio is supplied by the UNA Marketplace service once the module has a matching published marketplace record.
+STUDIO -> APPS MARKET -> DOWNLOADED -> INFO POPUP
+--------------------------------------------------
+This is a mandatory release requirement.
 
+UNA 15 does not build the Downloaded-page product-info popup from this local text file, cover.jpg or install/config.php. When the administrator clicks a module in Apps Market -> Downloaded, UNA sends the module's internal name to the UNA Marketplace integration endpoint and requests the Marketplace product whose Name matches that internal module name.
+
+For this module the required Marketplace Name is:
+
+    my_una_doctor
+
+Do not rename that Marketplace Name to "My UNA Module Doctor", "my_una_module_doctor" or any other variation. The human-facing Marketplace Product Title may be "My UNA Module Doctor", but the Marketplace Name must remain exactly `my_una_doctor` because that is the `name` value in install/config.php.
+
+The Marketplace record must be published and must contain the matching current version/package. The Marketplace description and screenshots are also the content UNA Studio uses in the native product-info popup.
+
+PRODUCT-INFO MEDIA REQUIREMENTS
+-------------------------------
+For every release, maintain all of the following in the UNA Marketplace record:
+- Product Title.
+- Exact internal Marketplace Name.
+- Current version matching install/config.php.
+- Vendor/author identity.
+- Category.
+- Search tags.
+- Full product description.
+- Marketplace thumbnail/cover artwork.
+- Product screenshots suitable for the Studio Info popup.
+- Current downloadable module package.
+- Matching update packages when applicable.
+
+RELEASE ACCEPTANCE CHECK
+------------------------
+Before a release is considered complete:
+1. Install or update the module on the clean UNA 15 test site.
+2. Open Studio -> Apps Market -> Downloaded.
+3. Confirm the module card shows the correct Studio icon, title, vendor and version.
+4. Click the module icon/card to open Info.
+5. Confirm the native UNA product-info popup opens without "Cannot load product info. Try again later."
+6. Confirm title, vendor, version, category, description and screenshots load correctly.
+7. Confirm all Marketplace media loads without broken images.
+8. Confirm the Marketplace package version matches install/config.php exactly.
+
+This Downloaded -> Info validation is part of the standard release checklist for My UNA Module Doctor and for every UNA module developed or maintained by this project.
