@@ -4870,6 +4870,292 @@ class MyUnaDoctorScanner
         }
 
         /*
+         * Verified Module Reference drift.
+         *
+         * Only cryptographically verified persistent references
+         * matching the currently installed module version are
+         * considered.
+         *
+         * Comparison is explicitly read-only:
+         * - no module files are modified
+         * - no comparison evidence session is created
+         * - no Reference Library history is updated
+         * - automatic repair remains disabled
+         *
+         * Explained differences are NOT repair candidates:
+         * - UNA-baseline-backed modifications
+         * - approved Local Repair Knowledge
+         * - baseline-backed live-only files
+         * - recognized runtime-generated live-only files
+         *
+         * A review candidate is emitted only when Doctor proves:
+         * - unexplained modified files, or
+         * - files missing from live relative to the reference, or
+         * - unexplained live-only files.
+         */
+        $aReferences =
+            $this->oModule
+                ->getModuleReferenceLibrary();
+
+        if (is_array($aReferences)) {
+            foreach ($aReferences as $aReference) {
+                if (
+                    !is_array($aReference)
+                    || empty(
+                        $aReference[
+                            'library_verified'
+                        ]
+                    )
+                ) {
+                    continue;
+                }
+
+                $sReferenceModule =
+                    trim(
+                        (string)(
+                            $aReference[
+                                'module_name'
+                            ]
+                            ?? ''
+                        )
+                    );
+
+                $sReferenceVersion =
+                    trim(
+                        (string)(
+                            $aReference[
+                                'reference_version'
+                            ]
+                            ?? ''
+                        )
+                    );
+
+                $sReferenceSha256 =
+                    strtolower(
+                        trim(
+                            (string)(
+                                $aReference[
+                                    'reference_sha256'
+                                ]
+                                ?? ''
+                            )
+                        )
+                    );
+
+                if (
+                    $sReferenceModule === ''
+                    || $sReferenceVersion === ''
+                    || strlen($sReferenceSha256) !== 64
+                    || !ctype_xdigit($sReferenceSha256)
+                ) {
+                    continue;
+                }
+
+                /*
+                 * Do not compare a reference for some other
+                 * installed version. Version drift is not proof
+                 * of source corruption.
+                 */
+                $aInstalledReferenceModule =
+                    $this->oDb->getRow(
+                        "SELECT `name`, `title`, `version`
+                         FROM `sys_modules`
+                         WHERE `name` = ?
+                         LIMIT 1",
+                        array(
+                            $sReferenceModule
+                        )
+                    );
+
+                if (
+                    !is_array(
+                        $aInstalledReferenceModule
+                    )
+                    || empty(
+                        $aInstalledReferenceModule
+                    )
+                    || trim(
+                        (string)(
+                            $aInstalledReferenceModule[
+                                'version'
+                            ]
+                            ?? ''
+                        )
+                    ) !== $sReferenceVersion
+                ) {
+                    continue;
+                }
+
+                $aReferenceComparison =
+                    $this->oModule
+                        ->compareSavedModuleReferenceReadOnly(
+                            $sReferenceSha256
+                        );
+
+                if (
+                    !is_array(
+                        $aReferenceComparison
+                    )
+                    || empty(
+                        $aReferenceComparison['ok']
+                    )
+                ) {
+                    /*
+                     * A failed comparison is not itself proof
+                     * that the module needs repair.
+                     */
+                    continue;
+                }
+
+                $aReferenceSummary =
+                    isset(
+                        $aReferenceComparison[
+                            'comparison'
+                        ]
+                    )
+                    && is_array(
+                        $aReferenceComparison[
+                            'comparison'
+                        ]
+                    )
+                        ? $aReferenceComparison[
+                            'comparison'
+                        ]
+                        : array();
+
+                $iUnexplainedModified =
+                    (int)(
+                        $aReferenceSummary[
+                            'unexplained_modified_count'
+                        ]
+                        ?? 0
+                    );
+
+                $iMissing =
+                    (int)(
+                        $aReferenceSummary[
+                            'missing_count'
+                        ]
+                        ?? 0
+                    );
+
+                $iUnexplainedLiveOnly =
+                    (int)(
+                        $aReferenceSummary[
+                            'unexplained_live_only_count'
+                        ]
+                        ?? 0
+                    );
+
+                if (
+                    $iUnexplainedModified <= 0
+                    && $iMissing <= 0
+                    && $iUnexplainedLiveOnly <= 0
+                ) {
+                    continue;
+                }
+
+                $iDrift =
+                    $iUnexplainedModified
+                    + $iMissing
+                    + $iUnexplainedLiveOnly;
+
+                $sInstalledTitle =
+                    trim(
+                        (string)(
+                            $aInstalledReferenceModule[
+                                'title'
+                            ]
+                            ?? ''
+                        )
+                    );
+
+                if ($sInstalledTitle === '')
+                    $sInstalledTitle =
+                        $sReferenceModule;
+
+                $aActive[] = array(
+                    'rule' =>
+                        'verified_module_reference_drift',
+
+                    'confidence' =>
+                        'high',
+
+                    'status' =>
+                        'review',
+
+                    'automatic_repair' =>
+                        false,
+
+                    'module' =>
+                        $sReferenceModule,
+
+                    'title' =>
+                        $sInstalledTitle,
+
+                    'module_version' =>
+                        $sReferenceVersion,
+
+                    'reference_sha256' =>
+                        $sReferenceSha256,
+
+                    'reference_filename' =>
+                        (string)(
+                            $aReference[
+                                'original_filename'
+                            ]
+                            ?? ''
+                        ),
+
+                    'summary' =>
+                        'Verified Module Reference drift detected for '
+                        . $sInstalledTitle
+                        . '.',
+
+                    'recommended_action' =>
+                        'Review the verified reference differences before approving any repair. Doctor has not changed any module files.',
+
+                    'drift_count' =>
+                        $iDrift,
+
+                    'unexplained_modified_count' =>
+                        $iUnexplainedModified,
+
+                    'missing_count' =>
+                        $iMissing,
+
+                    'unexplained_live_only_count' =>
+                        $iUnexplainedLiveOnly,
+
+                    /*
+                     * summarizeComparison() already bounds file
+                     * evidence arrays, so preserving the summary
+                     * here does not expose the unbounded raw tree.
+                     */
+                    'reference_comparison' =>
+                        $aReferenceSummary,
+
+                    'comparison_safety' =>
+                        isset(
+                            $aReferenceComparison[
+                                'safety'
+                            ]
+                        )
+                        && is_array(
+                            $aReferenceComparison[
+                                'safety'
+                            ]
+                        )
+                            ? $aReferenceComparison[
+                                'safety'
+                            ]
+                            : array(),
+                );
+            }
+        }
+
+
+        /*
          * Scan only a small recent tail of UNA/PHP logs for
          * known high-value repair signatures.
          */

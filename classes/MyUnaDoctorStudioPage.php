@@ -3950,11 +3950,17 @@ HTML
         ) {
             $sPreflightModule = bx_get('module');
 
+            $sPreflightReferenceSha256 =
+                bx_get('reference_sha256');
+
             $aPreflight =
                 $this->oDoctor->getRepairPreflight(
                     (string)$sPreflightRule,
                     $sPreflightModule !== false
                         ? (string)$sPreflightModule
+                        : '',
+                    $sPreflightReferenceSha256 !== false
+                        ? (string)$sPreflightReferenceSha256
                         : ''
                 );
 
@@ -4073,10 +4079,16 @@ HTML
         ) {
             $sPreviewModule = bx_get('module');
 
+            $sPreviewReferenceSha256 =
+                bx_get('reference_sha256');
+
             $aPreview = $this->oDoctor->getRepairPreview(
                 (string)$sPreviewRule,
                 $sPreviewModule !== false
                     ? (string)$sPreviewModule
+                    : '',
+                $sPreviewReferenceSha256 !== false
+                    ? (string)$sPreviewReferenceSha256
                     : ''
             );
 
@@ -4399,17 +4411,264 @@ HTML
         }
 
         /*
+         * Collect Doctor's actual repair recommendations.
+         *
+         * Update preparation is deliberately excluded here because it
+         * is rendered separately below and is not evidence of damage.
+         *
+         * Display only:
+         * no preview, preflight, arm or execution endpoint is invoked.
+         */
+        $aRepairs = array();
+
+        if (!empty($aScan['items'])) {
+            foreach ($aScan['items'] as $aItem) {
+                if (
+                    !is_array($aItem)
+                    || (string)($aItem['category'] ?? '')
+                        !== 'repairs'
+                ) {
+                    continue;
+                }
+
+                $aEvidence =
+                    isset($aItem['evidence'])
+                    && is_array($aItem['evidence'])
+                        ? $aItem['evidence']
+                        : array();
+
+                if (
+                    empty($aEvidence['active_candidates'])
+                    || !is_array(
+                        $aEvidence['active_candidates']
+                    )
+                ) {
+                    continue;
+                }
+
+                foreach (
+                    $aEvidence['active_candidates']
+                    as $aCandidate
+                ) {
+                    if (!is_array($aCandidate))
+                        continue;
+
+                    $sCandidateRule =
+                        (string)(
+                            $aCandidate['rule']
+                            ?? ''
+                        );
+
+                    if (
+                        $sCandidateRule === ''
+                        || $sCandidateRule
+                            === 'runtime_content_update_preparation'
+                    ) {
+                        continue;
+                    }
+
+                    $sCandidateModule =
+                        (string)(
+                            $aCandidate['module']
+                            ?? ''
+                        );
+
+                    $sCandidateFile =
+                        (string)(
+                            $aCandidate['file']
+                            ?? ''
+                        );
+
+                    $sCandidateReferenceSha256 =
+                        strtolower(
+                            trim(
+                                (string)(
+                                    $aCandidate[
+                                        'reference_sha256'
+                                    ]
+                                    ?? ''
+                                )
+                            )
+                        );
+
+                    $sCandidateKey =
+                        $sCandidateRule
+                        . '|'
+                        . $sCandidateModule
+                        . '|'
+                        . $sCandidateFile
+                        . '|'
+                        . $sCandidateReferenceSha256;
+
+                    $aRepairs[$sCandidateKey] =
+                        $aCandidate;
+                }
+            }
+        }
+
+        /*
          * Recommended Repairs remains truthful even when an
          * update-preparation opportunity exists.
          */
-        $s =
-            '<div class="mud-empty">'
-            . (
-                $bHasActiveRepair
-                    ? 'A repair is already in progress. Continue with the active repair session below.'
-                    : 'No new repair is currently recommended.'
-            )
-            . '</div>';
+        if (!empty($aRepairs)) {
+            $s = '<div class="mud-findings">';
+
+            foreach ($aRepairs as $aCandidate) {
+                $sRule =
+                    (string)(
+                        $aCandidate['rule']
+                        ?? 'repair_review'
+                    );
+
+                $sSummary =
+                    trim(
+                        (string)(
+                            $aCandidate['summary']
+                            ?? ''
+                        )
+                    );
+
+                if ($sSummary === '') {
+                    $sSummary =
+                        ucwords(
+                            str_replace(
+                                '_',
+                                ' ',
+                                $sRule
+                            )
+                        );
+                }
+
+                $sConfidence =
+                    strtoupper(
+                        (string)(
+                            $aCandidate['confidence']
+                            ?? 'unknown'
+                        )
+                    );
+
+                $sModule =
+                    trim(
+                        (string)(
+                            $aCandidate['module']
+                            ?? ''
+                        )
+                    );
+
+                $sFile =
+                    trim(
+                        (string)(
+                            $aCandidate['file']
+                            ?? ''
+                        )
+                    );
+
+                $sAction =
+                    trim(
+                        (string)(
+                            $aCandidate[
+                                'recommended_action'
+                            ]
+                            ?? ''
+                        )
+                    );
+
+                $s .= '<div class="mud-note" '
+                    . 'style="margin-bottom:14px">';
+
+                $s .= '<strong>'
+                    . $this->esc($sSummary)
+                    . '</strong><br>';
+
+                $s .= 'Confidence: '
+                    . $this->esc($sConfidence);
+
+                if ($sModule !== '') {
+                    $s .= '<br>Module: '
+                        . $this->esc($sModule);
+                }
+
+                if ($sFile !== '') {
+                    $s .= '<br>File: '
+                        . $this->esc($sFile);
+                }
+
+                if ($sAction !== '') {
+                    $s .= '<br><br>'
+                        . $this->esc($sAction);
+                }
+
+                $s .= '<br><br><strong>REVIEW ONLY</strong>'
+                    . ' — Doctor has not changed any files and '
+                    . 'has not armed this recommendation for repair.';
+
+                if (
+                    $sRule
+                    === 'verified_module_reference_drift'
+                    && $sModule !== ''
+                ) {
+                    $sReferenceSha256 =
+                        strtolower(
+                            trim(
+                                (string)(
+                                    $aCandidate[
+                                        'reference_sha256'
+                                    ]
+                                    ?? ''
+                                )
+                            )
+                        );
+
+                    if (
+                        strlen($sReferenceSha256) === 64
+                        && ctype_xdigit(
+                            $sReferenceSha256
+                        )
+                    ) {
+                        $sPreviewUrl =
+                            BX_DOL_URL_STUDIO
+                            . 'module.php?name=my_una_doctor'
+                            . '&page=repair_candidates'
+                            . '&preview='
+                            . rawurlencode(
+                                $sRule
+                            )
+                            . '&module='
+                            . rawurlencode(
+                                $sModule
+                            )
+                            . '&reference_sha256='
+                            . rawurlencode(
+                                $sReferenceSha256
+                            );
+
+                        $s .= '<br><br>'
+                            . '<a class="bx-btn" href="'
+                            . $this->esc(
+                                $sPreviewUrl
+                            )
+                            . '">Preview Verified Repair</a>';
+                    } else {
+                        $s .= '<br><br><strong>'
+                            . 'Preview unavailable: invalid reference SHA-256.'
+                            . '</strong>';
+                    }
+                }
+
+                $s .= '</div>';
+            }
+
+            $s .= '</div>';
+        } else {
+            $s =
+                '<div class="mud-empty">'
+                . (
+                    $bHasActiveRepair
+                        ? 'A repair is already in progress. Continue with the active repair session below.'
+                        : 'No new repair is currently recommended.'
+                )
+                . '</div>';
+        }
 
         if (empty($aPreparations)) {
             return $s;
@@ -4673,6 +4932,77 @@ HTML
                     : 'NO',
         );
 
+        if (
+            (string)(
+                $aPreview['rule']
+                ?? ''
+            )
+            === 'verified_module_reference_drift'
+        ) {
+            $aRows['Module version'] =
+                (string)(
+                    $aPreview[
+                        'module_version'
+                    ]
+                    ?? ''
+                );
+
+            $aRows['Reference SHA-256'] =
+                (string)(
+                    $aPreview[
+                        'reference_sha256'
+                    ]
+                    ?? ''
+                );
+
+            $aRows['Reference file'] =
+                (string)(
+                    $aPreview[
+                        'reference_filename'
+                    ]
+                    ?? ''
+                );
+
+            $aRows['Unexplained modified'] =
+                number_format(
+                    (int)(
+                        $aPreview[
+                            'unexplained_modified_count'
+                        ]
+                        ?? 0
+                    )
+                );
+
+            $aRows['Missing from live'] =
+                number_format(
+                    (int)(
+                        $aPreview[
+                            'missing_count'
+                        ]
+                        ?? 0
+                    )
+                );
+
+            $aRows['Unexplained live-only'] =
+                number_format(
+                    (int)(
+                        $aPreview[
+                            'unexplained_live_only_count'
+                        ]
+                        ?? 0
+                    )
+                );
+
+            $aRows['Preflight available'] =
+                !empty(
+                    $aPreview[
+                        'preflight_available'
+                    ]
+                )
+                    ? 'YES'
+                    : 'NO';
+        }
+
         foreach ($aRows as $sLabel => $sValue) {
             $s .= '<tr>'
                 . '<th>'
@@ -4705,6 +5035,40 @@ HTML
                 $aPreview['warnings'] ?? array(),
         );
 
+        if (
+            (string)(
+                $aPreview['rule']
+                ?? ''
+            )
+            === 'verified_module_reference_drift'
+        ) {
+            $aSections =
+                array_merge(
+                    array(
+                        'Unexplained modified files' =>
+                            $aPreview[
+                                'unexplained_modified_files'
+                            ] ?? array(),
+
+                        'Missing files' =>
+                            $aPreview[
+                                'missing_files'
+                            ] ?? array(),
+
+                        'Unexplained live-only files' =>
+                            $aPreview[
+                                'unexplained_live_only_files'
+                            ] ?? array(),
+
+                        'Explained differences Doctor will leave untouched' =>
+                            $aPreview[
+                                'explained_files_left_untouched'
+                            ] ?? array(),
+                    ),
+                    $aSections
+                );
+        }
+
         foreach ($aSections as $sTitle => $aItems) {
             if (
                 empty($aItems) ||
@@ -4726,6 +5090,52 @@ HTML
             }
 
             $s .= '</ol>';
+        }
+
+        if (
+            (string)(
+                $aPreview['rule']
+                ?? ''
+            )
+            === 'verified_module_reference_drift'
+            && !empty(
+                $aPreview[
+                    'preflight_available'
+                ]
+            )
+            && !empty(
+                $aPreview['module']
+            )
+        ) {
+            $sPreflightUrl =
+                BX_DOL_URL_STUDIO
+                . 'module.php?name=my_una_doctor'
+                . '&page=repair_candidates'
+                . '&preflight=verified_module_reference_drift'
+                . '&module='
+                . rawurlencode(
+                    (string)$aPreview['module']
+                )
+                . '&reference_sha256='
+                . rawurlencode(
+                    (string)(
+                        $aPreview[
+                            'reference_sha256'
+                        ]
+                        ?? ''
+                    )
+                );
+
+            $s .= '<div style="margin-top:20px">'
+                . '<a class="bx-btn" href="'
+                . $this->esc(
+                    $sPreflightUrl
+                )
+                . '">'
+                . '<i class="sys-icon shield-alt"></i> '
+                . 'Run Read-only Preflight'
+                . '</a>'
+                . '</div>';
         }
 
         $s .= '<div class="mud-note">'
@@ -7373,6 +7783,13 @@ MUDAUTOCONTINUE;
         $s = '<div class="mud-section">';
         $s .= '<h2>Repair Preflight</h2>';
 
+        $bReferencePreflight =
+            (string)(
+                $aPreflight['rule']
+                ?? ''
+            )
+            === 'verified_module_reference_drift';
+
         if (empty($aPreflight['ok'])) {
             $s .= '<div class="mud-finding warning">'
                 . '<div class="mud-sev">'
@@ -7397,21 +7814,105 @@ MUDAUTOCONTINUE;
 
         $bReady = !empty($aPreflight['ready']);
 
-        $s .= '<div class="mud-note">'
-            . '<strong>'
-            . (
-                $bReady
-                    ? 'PREFLIGHT PASSED'
-                    : 'PREFLIGHT NOT READY'
-            )
-            . '</strong><br>'
-            . (
-                $bReady
-                    ? 'All mandatory read-only preflight checks passed.'
-                    : 'One or more mandatory checks failed. Apply Repair remains unavailable.'
-            )
-            . '<br><strong>No changes were made.</strong>'
-            . '</div>';
+        $bPreflightComplete =
+            !empty(
+                $aPreflight[
+                    'preflight_complete'
+                ]
+            );
+
+        if (
+            $bReferencePreflight
+            && $bPreflightComplete
+            && !$bReady
+        ) {
+            $s .= '<div class="mud-note">'
+                . '<strong>'
+                . 'READ-ONLY PREFLIGHT COMPLETE'
+                . '</strong><br>'
+                . 'All implemented verified-reference safety checks passed. '
+                . 'Repair arming remains deliberately disabled at this development stage.'
+                . '<br><strong>No changes were made.</strong>'
+                . '</div>';
+        } else {
+            $s .= '<div class="mud-note">'
+                . '<strong>'
+                . (
+                    $bReady
+                        ? 'PREFLIGHT PASSED'
+                        : 'PREFLIGHT NOT READY'
+                )
+                . '</strong><br>'
+                . (
+                    $bReady
+                        ? 'All mandatory read-only preflight checks passed.'
+                        : 'One or more mandatory checks failed. Apply Repair remains unavailable.'
+                )
+                . '<br><strong>No changes were made.</strong>'
+                . '</div>';
+        }
+
+        if ($bReferencePreflight) {
+            $s .= '<div class="mud-note">'
+                . '<strong>Verified reference:</strong> '
+                . $this->esc(
+                    (string)(
+                        $aPreflight[
+                            'reference_sha256'
+                        ]
+                        ?? ''
+                    )
+                )
+                . '<br><strong>Module version:</strong> '
+                . $this->esc(
+                    (string)(
+                        $aPreflight[
+                            'module_version'
+                        ]
+                        ?? ''
+                    )
+                )
+                . '<br><strong>Preflight ID:</strong> '
+                . $this->esc(
+                    (string)(
+                        $aPreflight[
+                            'preflight_id'
+                        ]
+                        ?? ''
+                    )
+                )
+                . '<br><strong>Arm available:</strong> '
+                . (
+                    !empty(
+                        $aPreflight[
+                            'arm_available'
+                        ]
+                    )
+                        ? 'YES'
+                        : 'NO'
+                )
+                . '<br><strong>Ready for arm:</strong> '
+                . (
+                    !empty(
+                        $aPreflight[
+                            'ready_for_arm'
+                        ]
+                    )
+                        ? 'YES'
+                        : 'NO'
+                )
+                . '<br><strong>Changes applied:</strong> '
+                . (
+                    !empty(
+                        $aPreflight[
+                            'changes_applied'
+                        ]
+                    )
+                        ? 'YES'
+                        : 'NO'
+                )
+                . '</div>';
+        }
 
         if (!empty($aPreflight['process'])) {
             $p = $aPreflight['process'];
@@ -7523,6 +8024,93 @@ MUDAUTOCONTINUE;
 
         $s .= '</tbody></table></div>';
 
+        if (
+            $bReferencePreflight
+            && !empty(
+                $aPreflight[
+                    'operations'
+                ]
+            )
+            && is_array(
+                $aPreflight[
+                    'operations'
+                ]
+            )
+        ) {
+            $s .= '<h3 style="margin-top:20px">'
+                . 'Verified Future Operations'
+                . '</h3>';
+
+            $s .= '<div class="mud-note">'
+                . 'These are classifications only. '
+                . 'Preflight does not restore, create, quarantine, move or delete any file.'
+                . '</div>';
+
+            $s .= '<div class="mud-table-wrap">';
+            $s .= '<table class="mud-table">';
+            $s .= '<thead><tr>'
+                . '<th>Future action</th>'
+                . '<th>File</th>'
+                . '<th>Path safety</th>'
+                . '<th>Future write check</th>'
+                . '</tr></thead><tbody>';
+
+            foreach (
+                $aPreflight[
+                    'operations'
+                ]
+                as $aOperation
+            ) {
+                $s .= '<tr>'
+                    . '<td><strong>'
+                    . $this->esc(
+                        (string)(
+                            $aOperation[
+                                'action'
+                            ]
+                            ?? ''
+                        )
+                    )
+                    . '</strong></td>'
+
+                    . '<td>'
+                    . $this->esc(
+                        (string)(
+                            $aOperation[
+                                'file'
+                            ]
+                            ?? ''
+                        )
+                    )
+                    . '</td>'
+
+                    . '<td>'
+                    . $this->esc(
+                        (string)(
+                            $aOperation[
+                                'path_status'
+                            ]
+                            ?? ''
+                        )
+                    )
+                    . '</td>'
+
+                    . '<td>'
+                    . $this->esc(
+                        (string)(
+                            $aOperation[
+                                'write_status'
+                            ]
+                            ?? ''
+                        )
+                    )
+                    . '</td>'
+                    . '</tr>';
+            }
+
+            $s .= '</tbody></table></div>';
+        }
+
         if (!empty(
             $aPreflight['cron_pause_target']
         )) {
@@ -7593,11 +8181,20 @@ MUDAUTOCONTINUE;
                 . '</p>';
         }
 
-        $s .= '<div class="mud-note">'
-            . '<strong>Apply Repair remains disabled.</strong> '
-            . 'Preflight performs no cron mutation, file movement, database mutation, '
-            . 'module update or checksum re-baselining.'
-            . '</div>';
+        if ($bReferencePreflight) {
+            $s .= '<div class="mud-note">'
+                . '<strong>Reference repair arming remains disabled.</strong> '
+                . 'This preflight performs no file restoration, file creation, '
+                . 'quarantine, deletion, database mutation, repair-journal creation '
+                . 'or checksum re-baselining.'
+                . '</div>';
+        } else {
+            $s .= '<div class="mud-note">'
+                . '<strong>Apply Repair remains disabled.</strong> '
+                . 'Preflight performs no cron mutation, file movement, database mutation, '
+                . 'module update or checksum re-baselining.'
+                . '</div>';
+        }
 
         $s .= '</div>';
 
@@ -8031,6 +8628,206 @@ MUDAUTOCONTINUE;
 
             document.body.appendChild(overlay);
         }, true);
+
+        /* MUD_LONG_GET_ACTIVITY_START */
+
+        /*
+         * Long-running Doctor GET actions.
+         *
+         * Full Health Scan, verified repair Preview and read-only
+         * Preflight use normal links rather than forms, so reuse
+         * the existing Doctor activity overlay for those requests.
+         *
+         * Visual feedback only. No maintenance or repair mutation.
+         */
+        document.addEventListener("click", function(event) {
+            if (
+                event.defaultPrevented ||
+                event.button !== 0 ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey
+            ) {
+                return;
+            }
+
+            const link =
+                event.target.closest("a[href]");
+
+            if (!link) {
+                return;
+            }
+
+            let url;
+
+            try {
+                url = new URL(
+                    link.href,
+                    window.location.href
+                );
+            } catch (error) {
+                return;
+            }
+
+            if (
+                url.searchParams.get("name")
+                !== "my_una_doctor"
+            ) {
+                return;
+            }
+
+            let title = "";
+            let copy = "";
+
+            if (
+                url.searchParams.get("page") === "overview" &&
+                url.searchParams.get("run") === "1"
+            ) {
+                title =
+                    "Doctor is running a full health scan…";
+
+                copy =
+                    "Checking UNA health, module integrity, "
+                    + "update readiness, logs, storage, "
+                    + "reference evidence and repair candidates.";
+            } else if (
+                url.searchParams.get("page")
+                    === "repair_candidates" &&
+                url.searchParams.get("preview")
+            ) {
+                title =
+                    "Doctor is preparing the repair preview…";
+
+                copy =
+                    "Re-checking the current repair evidence "
+                    + "before showing the verified preview.";
+            } else if (
+                url.searchParams.get("page")
+                    === "repair_candidates" &&
+                url.searchParams.get("preflight")
+            ) {
+                title =
+                    "Doctor is running read-only preflight…";
+
+                copy =
+                    "Revalidating the reference, module identity, "
+                    + "paths, rollback readiness and safety gates.";
+            } else {
+                return;
+            }
+
+            if (link.dataset.mudBusy === "1") {
+                event.preventDefault();
+                return;
+            }
+
+            link.dataset.mudBusy = "1";
+
+            link.classList.add(
+                "mud-working-button"
+            );
+
+            link.setAttribute(
+                "aria-disabled",
+                "true"
+            );
+
+            /*
+             * Existing Show Activity setting controls graphics.
+             * Duplicate-click protection remains active regardless.
+             */
+            if (!mudShowActivity) {
+                return;
+            }
+
+            const activityOverlay =
+                document.createElement("div");
+
+            activityOverlay.className =
+                "mud-activity-overlay";
+
+            activityOverlay.innerHTML = `
+                <div class="mud-activity-panel"
+                     role="status"
+                     aria-live="assertive">
+
+                    <div class="mud-activity-icon"
+                         aria-hidden="true"></div>
+
+                    <strong></strong>
+
+                    <div class="mud-activity-copy"></div>
+
+                    <div class="mud-activity-track"
+                         aria-hidden="true">
+                        <span></span>
+                    </div>
+
+                    <div class="mud-activity-warning">
+                        Keep this page open until Doctor finishes.
+                    </div>
+                </div>
+            `;
+
+            const titleNode =
+                activityOverlay.querySelector(
+                    "strong"
+                );
+
+            const copyNode =
+                activityOverlay.querySelector(
+                    ".mud-activity-copy"
+                );
+
+            if (titleNode) {
+                titleNode.textContent = title;
+            }
+
+            if (copyNode) {
+                copyNode.textContent = copy;
+            }
+
+            document.body.appendChild(
+                activityOverlay
+            );
+        }, true);
+
+        /*
+         * Clear stale activity state if the browser restores this
+         * page from the back-forward cache.
+         */
+        window.addEventListener(
+            "pageshow",
+            function() {
+                document
+                    .querySelectorAll(
+                        ".mud-activity-overlay"
+                    )
+                    .forEach(function(node) {
+                        node.remove();
+                    });
+
+                document
+                    .querySelectorAll(
+                        "[data-mud-busy=\"1\"]"
+                    )
+                    .forEach(function(node) {
+                        delete node.dataset.mudBusy;
+
+                        node.classList.remove(
+                            "mud-working-button"
+                        );
+
+                        node.removeAttribute(
+                            "aria-disabled"
+                        );
+                    });
+            }
+        );
+
+        /* MUD_LONG_GET_ACTIVITY_END */
+
         </script>';
     }
 

@@ -110,10 +110,40 @@ class MyUnaDoctorReferencePackage
     }
 
 
-    protected function doCompareStoredReferenceFile(
+    /**
+     * Compare one verified persistent Reference Library ZIP
+     * without creating comparison evidence or updating
+     * Reference Library comparison history.
+     *
+     * Intended for read-only health/intelligence scans.
+     */
+    public function compareStoredReferenceFileReadOnly(
         $sPath,
         $sOriginal,
         $sExpectedSha256
+    ) {
+        try {
+            return $this->doCompareStoredReferenceFile(
+                $sPath,
+                $sOriginal,
+                $sExpectedSha256,
+                false
+            );
+        } catch (Throwable $e) {
+            return array(
+                'ok' => false,
+                'changes_applied' => false,
+                'error' => $e->getMessage(),
+            );
+        }
+    }
+
+
+    protected function doCompareStoredReferenceFile(
+        $sPath,
+        $sOriginal,
+        $sExpectedSha256,
+        $bPersistComparison = true
     ) {
         if (!class_exists('ZipArchive'))
             throw new RuntimeException(
@@ -217,7 +247,8 @@ class MyUnaDoctorReferencePackage
             $sOriginal,
             $iSize,
             'library',
-            $sExpectedSha256
+            $sExpectedSha256,
+            $bPersistComparison
         );
     }
 
@@ -231,7 +262,8 @@ class MyUnaDoctorReferencePackage
         $sOriginal,
         $iUploadSize,
         $sSource = 'upload',
-        $sExpectedSha256 = ''
+        $sExpectedSha256 = '',
+        $bPersistComparison = true
     ) {
         if (
             strtolower(
@@ -460,16 +492,37 @@ class MyUnaDoctorReferencePackage
                 ),
             );
 
-            $aStored =
-                $this->persistComparison(
-                    $sTmp,
-                    $aResult,
-                    $aComparison,
-                    $aBaseline
+            if ($bPersistComparison) {
+                $aStored =
+                    $this->persistComparison(
+                        $sTmp,
+                        $aResult,
+                        $aComparison,
+                        $aBaseline
+                    );
+
+                $aResult['evidence'] =
+                    $aStored;
+
+                $aResult['safety'][
+                    'comparison_persisted'
+                ] = true;
+            } else {
+                /*
+                 * Health/intelligence comparison.
+                 *
+                 * The trusted ZIP and live module were compared
+                 * normally, but no comparison session, evidence
+                 * package or Reference Library history is created.
+                 */
+                $aResult['evidence'] = array(
+                    'persisted' => false,
                 );
 
-            $aResult['evidence'] =
-                $aStored;
+                $aResult['safety'][
+                    'comparison_persisted'
+                ] = false;
+            }
 
             return $aResult;
 

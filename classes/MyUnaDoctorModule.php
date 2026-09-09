@@ -92,6 +92,91 @@ class MyUnaDoctorModule extends BxDolModule
 
 
     /**
+     * Compare one verified saved Module Reference against the
+     * currently installed module without creating comparison
+     * evidence or changing Reference Library history.
+     *
+     * Read-only health/intelligence path.
+     */
+    public function compareSavedModuleReferenceReadOnly(
+        $sSha256
+    ) {
+        $sSha256 =
+            strtolower(
+                trim((string)$sSha256)
+            );
+
+        $aItem =
+            $this->getModuleReferenceLibraryItem(
+                $sSha256
+            );
+
+        if (
+            empty($aItem)
+            || empty(
+                $aItem['library_verified']
+            )
+        ) {
+            return array(
+                'ok' => false,
+                'changes_applied' => false,
+                'error' =>
+                    'The saved reference did not pass current Reference Library verification.',
+            );
+        }
+
+        $sRelPath =
+            (string)(
+                $aItem['storage_relpath']
+                ?? ''
+            );
+
+        $sFullPath =
+            rtrim(
+                BX_DIRECTORY_PATH_ROOT,
+                DIRECTORY_SEPARATOR
+            )
+            . DIRECTORY_SEPARATOR
+            . str_replace(
+                '/',
+                DIRECTORY_SEPARATOR,
+                $sRelPath
+            );
+
+        $sComparator =
+            BX_DIRECTORY_PATH_MODULES
+            . 'newton/my_una_doctor/classes/'
+            . 'MyUnaDoctorReferencePackage.php';
+
+        if (!is_file($sComparator)) {
+            return array(
+                'ok' => false,
+                'changes_applied' => false,
+                'error' =>
+                    'Reference package comparison engine is missing.',
+            );
+        }
+
+        require_once $sComparator;
+
+        $oComparator =
+            new MyUnaDoctorReferencePackage(
+                $this
+            );
+
+        return $oComparator
+            ->compareStoredReferenceFileReadOnly(
+                $sFullPath,
+                (string)(
+                    $aItem['original_filename']
+                    ?? 'reference.zip'
+                ),
+                $sSha256
+            );
+    }
+
+
+    /**
      * Return the read-only persistent Module Reference Library
      * manager.
      */
@@ -448,17 +533,50 @@ class MyUnaDoctorModule extends BxDolModule
     }
 
 
-    public function getRepairPreview($sRule, $sModule = '')
+    public function getRepairPreview(
+        $sRule,
+        $sModule = '',
+        $sRequestedReferenceSha256 = ''
+    )
     {
         $sRule = trim((string)$sRule);
         $sModule = trim((string)$sModule);
+
+        $sRequestedReferenceSha256 =
+            strtolower(
+                trim(
+                    (string)$sRequestedReferenceSha256
+                )
+            );
+
+        if (
+            $sRule
+                === 'verified_module_reference_drift'
+            && (
+                strlen(
+                    $sRequestedReferenceSha256
+                ) !== 64
+                || !ctype_xdigit(
+                    $sRequestedReferenceSha256
+                )
+            )
+        ) {
+            return array(
+                'ok' => false,
+                'mode' => 'preview',
+                'changes_applied' => false,
+                'error' =>
+                    'Safety stop: an exact verified Reference Library SHA-256 is required for this repair preview.',
+            );
+        }
 
         /*
          * Current staged repair support includes preview, read-only preflight and guarded arm planning for the first proven
          * high-confidence repair workflow.
          */
         $aSupported = array(
-            'runtime_content_update_preparation'
+            'runtime_content_update_preparation',
+            'verified_module_reference_drift'
         );
 
         if (!in_array($sRule, $aSupported, true)) {
@@ -521,6 +639,30 @@ class MyUnaDoctorModule extends BxDolModule
                     continue;
                 }
 
+                if (
+                    $sRule
+                        === 'verified_module_reference_drift'
+                ) {
+                    $sCandidateReferenceSha256 =
+                        strtolower(
+                            trim(
+                                (string)(
+                                    $aCandidate[
+                                        'reference_sha256'
+                                    ]
+                                    ?? ''
+                                )
+                            )
+                        );
+
+                    if (
+                        $sCandidateReferenceSha256
+                        !== $sRequestedReferenceSha256
+                    ) {
+                        continue;
+                    }
+                }
+
                 $aMatch = $aCandidate;
                 break 2;
             }
@@ -546,6 +688,468 @@ class MyUnaDoctorModule extends BxDolModule
                 'error' => 'Safety stop: this candidate does not explicitly declare automatic repair as disabled.',
             );
         }
+
+        /*
+         * Verified Module Reference Repair Preview.
+         *
+         * Separate read-only path. Reference repair evidence has
+         * different safety semantics from runtime-content update
+         * preparation.
+         *
+         * Always re-run the cryptographically verified comparison
+         * instead of relying only on the health-scan snapshot.
+         */
+        if ($sRule === 'verified_module_reference_drift') {
+            $sReferenceSha256 =
+                strtolower(
+                    trim(
+                        (string)(
+                            $aMatch[
+                                'reference_sha256'
+                            ]
+                            ?? ''
+                        )
+                    )
+                );
+
+            if (
+                strlen($sReferenceSha256) !== 64
+                || !ctype_xdigit($sReferenceSha256)
+            ) {
+                return array(
+                    'ok' => false,
+                    'mode' => 'preview',
+                    'changes_applied' => false,
+                    'error' =>
+                        'Safety stop: the repair candidate does not contain a valid verified Reference Library SHA-256.',
+                );
+            }
+
+            if (
+                $sReferenceSha256
+                !== $sRequestedReferenceSha256
+            ) {
+                return array(
+                    'ok' => false,
+                    'mode' => 'preview',
+                    'changes_applied' => false,
+                    'error' =>
+                        'Safety stop: the matched candidate SHA-256 does not equal the explicitly requested reference SHA-256.',
+                );
+            }
+
+            $aFreshComparison =
+                $this->compareSavedModuleReferenceReadOnly(
+                    $sReferenceSha256
+                );
+
+            if (
+                !is_array($aFreshComparison)
+                || empty($aFreshComparison['ok'])
+            ) {
+                return array(
+                    'ok' => false,
+                    'mode' => 'preview',
+                    'changes_applied' => false,
+                    'error' =>
+                        isset($aFreshComparison['error'])
+                            ? (string)$aFreshComparison['error']
+                            : 'The verified reference could not be compared to the current live module.',
+                );
+            }
+
+            if (
+                !isset(
+                    $aFreshComparison[
+                        'safety'
+                    ][
+                        'comparison_persisted'
+                    ]
+                )
+                || $aFreshComparison[
+                    'safety'
+                ][
+                        'comparison_persisted'
+                    ] !== false
+            ) {
+                return array(
+                    'ok' => false,
+                    'mode' => 'preview',
+                    'changes_applied' => false,
+                    'error' =>
+                        'Safety stop: the reference preview did not prove that comparison persistence was disabled.',
+                );
+            }
+
+            $aComparison =
+                isset($aFreshComparison['comparison'])
+                && is_array(
+                    $aFreshComparison['comparison']
+                )
+                    ? $aFreshComparison['comparison']
+                    : array();
+
+            $iUnexplainedModified =
+                (int)(
+                    $aComparison[
+                        'unexplained_modified_count'
+                    ]
+                    ?? 0
+                );
+
+            $iMissing =
+                (int)(
+                    $aComparison['missing_count']
+                    ?? 0
+                );
+
+            $iUnexplainedLiveOnly =
+                (int)(
+                    $aComparison[
+                        'unexplained_live_only_count'
+                    ]
+                    ?? 0
+                );
+
+            $iActionable =
+                $iUnexplainedModified
+                + $iMissing
+                + $iUnexplainedLiveOnly;
+
+            if ($iActionable <= 0) {
+                return array(
+                    'ok' => false,
+                    'mode' => 'preview',
+                    'changes_applied' => false,
+                    'error' =>
+                        'The previously detected verified reference drift is no longer present. Run a new health scan before continuing.',
+                );
+            }
+
+            $getFiles = function($sKey) use ($aComparison) {
+                return isset($aComparison[$sKey])
+                    && is_array($aComparison[$sKey])
+                        ? $aComparison[$sKey]
+                        : array();
+            };
+
+            /*
+             * Comparison evidence is intentionally richer for
+             * modified files than for missing/live-only files.
+             *
+             * Modified entries may be structured records containing
+             * file/hash/classification fields. Missing and live-only
+             * evidence may simply be filenames.
+             *
+             * Normalize both shapes for the generic Studio preview
+             * renderer without discarding useful hash evidence.
+             */
+            $formatEvidenceFiles = function(array $aItems) {
+                $aFormatted = array();
+
+                foreach ($aItems as $mixedItem) {
+                    if (!is_array($mixedItem)) {
+                        $sValue =
+                            trim((string)$mixedItem);
+
+                        if ($sValue !== '')
+                            $aFormatted[] = $sValue;
+
+                        continue;
+                    }
+
+                    $sFile =
+                        trim(
+                            (string)(
+                                $mixedItem['file']
+                                ?? ''
+                            )
+                        );
+
+                    if ($sFile === '')
+                        $sFile = '(unnamed file)';
+
+                    $aDetails = array();
+
+                    $aDetailFields = array(
+                        'reference_md5' =>
+                            'reference MD5',
+
+                        'live_md5' =>
+                            'live MD5',
+
+                        'baseline_md5' =>
+                            'UNA baseline MD5',
+
+                        'classification' =>
+                            'classification',
+                    );
+
+                    foreach (
+                        $aDetailFields
+                        as $sKey => $sLabel
+                    ) {
+                        $sValue =
+                            trim(
+                                (string)(
+                                    $mixedItem[$sKey]
+                                    ?? ''
+                                )
+                            );
+
+                        if ($sValue !== '') {
+                            $aDetails[] =
+                                $sLabel
+                                . ': '
+                                . $sValue;
+                        }
+                    }
+
+                    $sFormatted = $sFile;
+
+                    if (!empty($aDetails)) {
+                        $sFormatted .=
+                            ' — '
+                            . implode(
+                                '; ',
+                                $aDetails
+                            );
+                    }
+
+                    $aFormatted[] =
+                        $sFormatted;
+                }
+
+                return $aFormatted;
+            };
+
+            $aUnexplainedModifiedFiles =
+                $formatEvidenceFiles(
+                    $getFiles(
+                        'unexplained_modified_files'
+                    )
+                );
+
+            $aMissingFiles =
+                $formatEvidenceFiles(
+                    $getFiles(
+                        'missing_files'
+                    )
+                );
+
+            $aUnexplainedLiveOnlyFiles =
+                $formatEvidenceFiles(
+                    $getFiles(
+                        'unexplained_live_only_files'
+                    )
+                );
+
+            $aExplained = array();
+
+            foreach (
+                $formatEvidenceFiles(
+                    $getFiles(
+                        'baseline_backed_modified_files'
+                    )
+                )
+                as $sFile
+            ) {
+                $aExplained[] =
+                    '[UNA baseline-backed modification] '
+                    . $sFile;
+            }
+
+            foreach (
+                $formatEvidenceFiles(
+                    $getFiles(
+                        'approved_modified_files'
+                    )
+                )
+                as $sFile
+            ) {
+                $aExplained[] =
+                    '[Approved modification] '
+                    . $sFile;
+            }
+
+            foreach (
+                $formatEvidenceFiles(
+                    $getFiles(
+                        'baseline_backed_live_only_files'
+                    )
+                )
+                as $sFile
+            ) {
+                $aExplained[] =
+                    '[UNA baseline-backed live-only file] '
+                    . $sFile;
+            }
+
+            foreach (
+                $formatEvidenceFiles(
+                    $getFiles(
+                        'runtime_generated_live_only_files'
+                    )
+                )
+                as $sFile
+            ) {
+                $aExplained[] =
+                    '[Runtime-generated live-only file] '
+                    . $sFile;
+            }
+
+            $sTargetModule =
+                isset($aMatch['module'])
+                    ? (string)$aMatch['module']
+                    : $sModule;
+
+            $sTitle =
+                isset($aMatch['title'])
+                    ? (string)$aMatch['title']
+                    : $sTargetModule;
+
+            $sVersion =
+                (string)(
+                    $aMatch[
+                        'module_version'
+                    ]
+                    ?? (
+                        $aFreshComparison[
+                            'installed'
+                        ][
+                            'registered_version'
+                        ]
+                        ?? ''
+                    )
+                );
+
+            $sPreviewId =
+                hash(
+                    'sha256',
+                    implode(
+                        '|',
+                        array(
+                            'verified_module_reference_drift',
+                            $sTargetModule,
+                            $sVersion,
+                            $sReferenceSha256,
+                            (string)$iUnexplainedModified,
+                            (string)$iMissing,
+                            (string)$iUnexplainedLiveOnly,
+                        )
+                    )
+                );
+
+            return array(
+                'ok' => true,
+                'mode' => 'preview',
+
+                'preview_id' =>
+                    $sPreviewId,
+
+                'changes_applied' =>
+                    false,
+
+                'automatic_repair' =>
+                    false,
+
+                'preflight_available' =>
+                    true,
+
+                'rule' =>
+                    'verified_module_reference_drift',
+
+                'module' =>
+                    $sTargetModule,
+
+                'title' =>
+                    $sTitle,
+
+                'module_version' =>
+                    $sVersion,
+
+                'confidence' =>
+                    isset($aMatch['confidence'])
+                        ? (string)$aMatch['confidence']
+                        : 'high',
+
+                'source_integrity' =>
+                    'verified_reference_drift',
+
+                'reference_sha256' =>
+                    $sReferenceSha256,
+
+                'reference_filename' =>
+                    (string)(
+                        $aMatch[
+                            'reference_filename'
+                        ]
+                        ?? ''
+                    ),
+
+                'unexplained_modified_count' =>
+                    $iUnexplainedModified,
+
+                'missing_count' =>
+                    $iMissing,
+
+                'unexplained_live_only_count' =>
+                    $iUnexplainedLiveOnly,
+
+                'unexplained_modified_files' =>
+                    $aUnexplainedModifiedFiles,
+
+                'missing_files' =>
+                    $aMissingFiles,
+
+                'unexplained_live_only_files' =>
+                    $aUnexplainedLiveOnlyFiles,
+
+                'explained_files_left_untouched' =>
+                    $aExplained,
+
+                'preconditions' => array(
+                    'The saved Module Reference must continue to pass current Reference Library ZIP and manifest verification.',
+                    'The Reference Library SHA-256 must remain exactly ' . $sReferenceSha256 . '.',
+                    'The installed module must still match the identity and version represented by the verified reference.',
+                    'Doctor must re-run the verified comparison immediately before any future repair stage.',
+                    'Automatic repair remains disabled.',
+                ),
+
+                'proposed_steps' => array(
+                    'For each unexplained modified file, a future approved repair may restore the verified reference copy only after its current live hash is revalidated.',
+                    'For each missing file, a future approved repair may restore the exact file from the verified reference package.',
+                    'Unexplained live-only files require individual review before Doctor may quarantine or remove anything.',
+                    'Approved modifications, UNA-baseline-backed differences and recognized runtime-generated files will be left untouched.',
+                ),
+
+                'validation_after_future_apply' => array(
+                    'Re-run the same verified reference comparison.',
+                    'Confirm every approved restored file hashes exactly to the verified reference.',
+                    'Confirm every approved missing file has been restored.',
+                    'Confirm no explained or protected file was changed.',
+                    'Run Doctor file-integrity and module-version checks again.',
+                ),
+
+                'rollback_plan' => array(
+                    'Before any future write, preserve every affected live file or absence-state in the durable repair journal.',
+                    'Never overwrite a rollback copy after repair execution begins.',
+                    'If validation fails, restore the exact pre-repair live state before releasing the repair barrier.',
+                ),
+
+                'warnings' => array(
+                    'PREVIEW ONLY — no module file has been changed.',
+                    'Read-only preflight is available. Repair arming is not enabled for verified reference drift.',
+                    'Unexplained live-only files may be legitimate local additions and are not automatically deletable.',
+                    'A verified reference proves package integrity and identity; it does not by itself authorize destructive changes.',
+                ),
+
+                'safety_backup_root' =>
+                    BX_DIRECTORY_PATH_ROOT
+                    . 'tmp/my-una-doctor-repairs/',
+            );
+        }
+
 
         if (
             isset($aMatch['source_integrity']) &&
@@ -690,11 +1294,16 @@ class MyUnaDoctorModule extends BxDolModule
     }
 
 
-    public function getRepairPreflight($sRule, $sModule = '')
+    public function getRepairPreflight(
+        $sRule,
+        $sModule = '',
+        $sReferenceSha256 = ''
+    )
     {
         $aPreview = $this->getRepairPreview(
             $sRule,
-            $sModule
+            $sModule,
+            $sReferenceSha256
         );
 
         $aResult = array(
@@ -713,6 +1322,818 @@ class MyUnaDoctorModule extends BxDolModule
 
             return $aResult;
         }
+
+        /*
+         * Verified Module Reference Repair Preflight.
+         *
+         * This stage is intentionally read-only and intentionally
+         * NOT arm-ready.
+         *
+         * It proves whether the current candidate could be safely
+         * described as a future repair operation. It does not create
+         * a journal, backup, quarantine, directory or file.
+         */
+        if ($sRule === 'verified_module_reference_drift') {
+            $aResult['rule'] =
+                'verified_module_reference_drift';
+
+            $aResult['module'] =
+                (string)(
+                    $aPreview['module']
+                    ?? $sModule
+                );
+
+            $aResult['automatic_repair'] =
+                false;
+
+            $aResult['arm_available'] =
+                false;
+
+            $aResult['ready_for_arm'] =
+                false;
+
+            $aResult['preflight_complete'] =
+                false;
+
+            $addCheck = function(
+                $sKey,
+                $sLabel,
+                $sStatus,
+                $sDetail
+            ) use (&$aResult) {
+                $aResult['checks'][] = array(
+                    'key' =>
+                        (string)$sKey,
+
+                    'label' =>
+                        (string)$sLabel,
+
+                    'status' =>
+                        (string)$sStatus,
+
+                    'detail' =>
+                        (string)$sDetail,
+                );
+            };
+
+            /*
+             * Preview itself performs a fresh non-persistent
+             * comparison. If Preview succeeded, we already know
+             * that the latest scan candidate still exists and the
+             * comparison explicitly proved persistence was off.
+             */
+            $addCheck(
+                'fresh_preview',
+                'Fresh verified reference preview',
+                'pass',
+                'Doctor re-ran the current verified-reference preview successfully. No changes were applied.'
+            );
+
+            $sReferenceSha256 =
+                strtolower(
+                    trim(
+                        (string)(
+                            $aPreview[
+                                'reference_sha256'
+                            ]
+                            ?? ''
+                        )
+                    )
+                );
+
+            $aReference =
+                $this->getModuleReferenceLibraryItem(
+                    $sReferenceSha256
+                );
+
+            if (
+                !is_array($aReference)
+                || empty(
+                    $aReference[
+                        'library_verified'
+                    ]
+                )
+            ) {
+                $addCheck(
+                    'reference_library',
+                    'Reference Library verification',
+                    'fail',
+                    'The selected reference no longer passes current Reference Library verification.'
+                );
+
+                $aResult['error'] =
+                    'Verified reference preflight failed: Reference Library verification is no longer valid.';
+
+                return $aResult;
+            }
+
+            $addCheck(
+                'reference_library',
+                'Reference Library verification',
+                'pass',
+                'The selected ZIP and immutable manifest remain verified under SHA-256 '
+                . $sReferenceSha256
+                . '.'
+            );
+
+            $oDb = BxDolDb::getInstance();
+
+            $sModuleName =
+                trim(
+                    (string)(
+                        $aPreview['module']
+                        ?? $sModule
+                    )
+                );
+
+            $aModule =
+                $oDb->getRow(
+                    "SELECT `id`, `name`, `title`, `version`,
+                            `path`, `enabled`
+                     FROM `sys_modules`
+                     WHERE `name` = ?
+                     LIMIT 1",
+                    array(
+                        $sModuleName
+                    )
+                );
+
+            if (empty($aModule)) {
+                $addCheck(
+                    'module_registration',
+                    'Installed module registration',
+                    'fail',
+                    'The candidate module is no longer registered.'
+                );
+
+                $aResult['error'] =
+                    'Verified reference preflight failed: module registration is missing.';
+
+                return $aResult;
+            }
+
+            $sExpectedVersion =
+                trim(
+                    (string)(
+                        $aPreview[
+                            'module_version'
+                        ]
+                        ?? ''
+                    )
+                );
+
+            $sInstalledVersion =
+                trim(
+                    (string)(
+                        $aModule['version']
+                        ?? ''
+                    )
+                );
+
+            $sReferenceModule =
+                trim(
+                    (string)(
+                        $aReference[
+                            'module_name'
+                        ]
+                        ?? ''
+                    )
+                );
+
+            $sReferenceVersion =
+                trim(
+                    (string)(
+                        $aReference[
+                            'reference_version'
+                        ]
+                        ?? ''
+                    )
+                );
+
+            if (
+                $sModuleName === ''
+                || $sModuleName !== $sReferenceModule
+                || $sInstalledVersion === ''
+                || $sInstalledVersion !== $sExpectedVersion
+                || $sInstalledVersion !== $sReferenceVersion
+            ) {
+                $addCheck(
+                    'module_identity',
+                    'Module and version identity',
+                    'fail',
+                    'The installed module identity/version no longer exactly matches the verified reference and Preview.'
+                );
+
+                $aResult['error'] =
+                    'Verified reference preflight failed: module identity or version changed.';
+
+                return $aResult;
+            }
+
+            $addCheck(
+                'module_identity',
+                'Module and version identity',
+                'pass',
+                'Installed '
+                . $sModuleName
+                . ' '
+                . $sInstalledVersion
+                . ' exactly matches the verified reference identity.'
+            );
+
+            $sModulePath =
+                trim(
+                    (string)(
+                        $aModule['path']
+                        ?? ''
+                    ),
+                    "/\\"
+                );
+
+            if ($sModulePath === '') {
+                $addCheck(
+                    'module_root',
+                    'Live module root',
+                    'fail',
+                    'The registered module path is empty.'
+                );
+
+                $aResult['error'] =
+                    'Verified reference preflight failed: live module root is unavailable.';
+
+                return $aResult;
+            }
+
+            $sModuleRoot =
+                realpath(
+                    rtrim(
+                        BX_DIRECTORY_PATH_MODULES,
+                        DIRECTORY_SEPARATOR
+                    )
+                    . DIRECTORY_SEPARATOR
+                    . str_replace(
+                        '/',
+                        DIRECTORY_SEPARATOR,
+                        $sModulePath
+                    )
+                );
+
+            if (
+                $sModuleRoot === false
+                || !is_dir($sModuleRoot)
+            ) {
+                $addCheck(
+                    'module_root',
+                    'Live module root',
+                    'fail',
+                    'Doctor could not resolve the registered live module directory.'
+                );
+
+                $aResult['error'] =
+                    'Verified reference preflight failed: live module root could not be resolved.';
+
+                return $aResult;
+            }
+
+            $sModuleRoot =
+                rtrim(
+                    $sModuleRoot,
+                    DIRECTORY_SEPARATOR
+                )
+                . DIRECTORY_SEPARATOR;
+
+            $addCheck(
+                'module_root',
+                'Live module root',
+                'pass',
+                'Resolved module root: '
+                . $sModuleRoot
+            );
+
+            /*
+             * Preview evidence is presentation-normalized.
+             * Modified entries can include:
+             *
+             *   path — reference MD5: ...; live MD5: ...
+             *
+             * The path is always the portion before that evidence
+             * separator.
+             */
+            $extractEvidencePath =
+                function($mixedValue) {
+                    $sValue =
+                        trim(
+                            (string)$mixedValue
+                        );
+
+                    $iSeparator =
+                        strpos(
+                            $sValue,
+                            ' — '
+                        );
+
+                    if ($iSeparator !== false) {
+                        $sValue =
+                            substr(
+                                $sValue,
+                                0,
+                                $iSeparator
+                            );
+                    }
+
+                    return trim($sValue);
+                };
+
+            $aOperations = array();
+
+            foreach (
+                array(
+                    'unexplained_modified_files'
+                        => 'restore_verified_reference',
+
+                    'missing_files'
+                        => 'create_from_verified_reference',
+
+                    'unexplained_live_only_files'
+                        => 'quarantine_review_only',
+                )
+                as $sEvidenceKey => $sOperation
+            ) {
+                $aItems =
+                    isset($aPreview[$sEvidenceKey])
+                    && is_array(
+                        $aPreview[$sEvidenceKey]
+                    )
+                        ? $aPreview[$sEvidenceKey]
+                        : array();
+
+                foreach ($aItems as $mixedItem) {
+                    $sRelative =
+                        $extractEvidencePath(
+                            $mixedItem
+                        );
+
+                    $aOperations[] = array(
+                        'action' =>
+                            $sOperation,
+
+                        'file' =>
+                            $sRelative,
+                    );
+                }
+            }
+
+            if (empty($aOperations)) {
+                $addCheck(
+                    'actionable_evidence',
+                    'Current actionable drift',
+                    'fail',
+                    'The fresh Preview contains no actionable unexplained drift.'
+                );
+
+                $aResult['error'] =
+                    'Verified reference preflight failed: actionable drift disappeared.';
+
+                return $aResult;
+            }
+
+            $addCheck(
+                'actionable_evidence',
+                'Current actionable drift',
+                'pass',
+                'Fresh Preview contains '
+                . count($aOperations)
+                . ' actionable unexplained item(s).'
+            );
+
+            $bPathFailure =
+                false;
+
+            $bWritableFailure =
+                false;
+
+            $bLiveOnlyReview =
+                false;
+
+            $aValidatedOperations =
+                array();
+
+            foreach ($aOperations as $aOperation) {
+                $sRelative =
+                    trim(
+                        str_replace(
+                            '\\',
+                            '/',
+                            (string)(
+                                $aOperation['file']
+                                ?? ''
+                            )
+                        )
+                    );
+
+                $sAction =
+                    (string)(
+                        $aOperation['action']
+                        ?? ''
+                    );
+
+                $bRelativeSafe =
+                    $sRelative !== ''
+                    && $sRelative[0] !== '/'
+                    && strpos(
+                        $sRelative,
+                        "\0"
+                    ) === false
+                    && !preg_match(
+                        '#(^|/)\.\.(/|$)#',
+                        $sRelative
+                    )
+                    && !preg_match(
+                        '#(^|/)\.(/|$)#',
+                        $sRelative
+                    );
+
+                if (!$bRelativeSafe) {
+                    $bPathFailure =
+                        true;
+
+                    $aValidatedOperations[] =
+                        array(
+                            'action' =>
+                                $sAction,
+
+                            'file' =>
+                                $sRelative,
+
+                            'path_status' =>
+                                'fail',
+
+                            'write_status' =>
+                                'not_checked',
+                        );
+
+                    continue;
+                }
+
+                $sAbsolute =
+                    $sModuleRoot
+                    . str_replace(
+                        '/',
+                        DIRECTORY_SEPARATOR,
+                        $sRelative
+                    );
+
+                /*
+                 * Existing target: resolve its real path and reject
+                 * links or escape outside the module root.
+                 *
+                 * Missing target: resolve the nearest existing
+                 * parent and prove that parent remains inside the
+                 * module root.
+                 */
+                $bExists =
+                    file_exists($sAbsolute)
+                    || is_link($sAbsolute);
+
+                $bSymlink =
+                    is_link($sAbsolute);
+
+                $sResolvedBoundary =
+                    false;
+
+                if ($bExists) {
+                    $sResolvedBoundary =
+                        realpath($sAbsolute);
+                } else {
+                    $sParent =
+                        dirname($sAbsolute);
+
+                    while (
+                        !file_exists($sParent)
+                        && $sParent !== dirname($sParent)
+                    ) {
+                        $sParent =
+                            dirname($sParent);
+                    }
+
+                    $sResolvedBoundary =
+                        realpath($sParent);
+                }
+
+                $bInsideRoot =
+                    !$bSymlink
+                    && $sResolvedBoundary !== false
+                    && (
+                        $sResolvedBoundary
+                            === rtrim(
+                                $sModuleRoot,
+                                DIRECTORY_SEPARATOR
+                            )
+                        || strpos(
+                            rtrim(
+                                $sResolvedBoundary,
+                                DIRECTORY_SEPARATOR
+                            )
+                            . DIRECTORY_SEPARATOR,
+                            $sModuleRoot
+                        ) === 0
+                    );
+
+                if (!$bInsideRoot) {
+                    $bPathFailure =
+                        true;
+
+                    $aValidatedOperations[] =
+                        array(
+                            'action' =>
+                                $sAction,
+
+                            'file' =>
+                                $sRelative,
+
+                            'path_status' =>
+                                $bSymlink
+                                    ? 'symlink_rejected'
+                                    : 'outside_or_unresolved',
+
+                            'write_status' =>
+                                'not_checked',
+                        );
+
+                    continue;
+                }
+
+                /*
+                 * Future restore/create/quarantine operations need
+                 * the target parent to be writable by Studio PHP.
+                 * We check permissions only; we create nothing.
+                 */
+                $sParent =
+                    dirname($sAbsolute);
+
+                $sWritableProbe =
+                    $sParent;
+
+                while (
+                    !file_exists($sWritableProbe)
+                    && $sWritableProbe !== dirname($sWritableProbe)
+                ) {
+                    $sWritableProbe =
+                        dirname($sWritableProbe);
+                }
+
+                $bWritable =
+                    is_dir($sWritableProbe)
+                    && is_writable($sWritableProbe);
+
+                if (!$bWritable)
+                    $bWritableFailure = true;
+
+                if (
+                    $sAction
+                    === 'quarantine_review_only'
+                ) {
+                    $bLiveOnlyReview = true;
+                }
+
+                $aValidatedOperations[] =
+                    array(
+                        'action' =>
+                            $sAction,
+
+                        'file' =>
+                            $sRelative,
+
+                        'path_status' =>
+                            'inside_module_root',
+
+                        'exists' =>
+                            $bExists,
+
+                        'write_status' =>
+                            $bWritable
+                                ? 'parent_writable'
+                                : 'parent_not_writable',
+                    );
+            }
+
+            if ($bPathFailure) {
+                $addCheck(
+                    'path_confinement',
+                    'Actionable path confinement',
+                    'fail',
+                    'One or more candidate paths were unsafe, unresolved, symbolic links or escaped the registered module root.'
+                );
+
+                $aResult['operations'] =
+                    $aValidatedOperations;
+
+                $aResult['error'] =
+                    'Verified reference preflight failed: actionable path confinement could not be proven.';
+
+                return $aResult;
+            }
+
+            $addCheck(
+                'path_confinement',
+                'Actionable path confinement',
+                'pass',
+                'Every actionable path resolved safely inside the registered module root and no target symlink was accepted.'
+            );
+
+            if ($bWritableFailure) {
+                $addCheck(
+                    'future_write_permissions',
+                    'Future write locations',
+                    'fail',
+                    'One or more future operation parents are not writable by the current Studio PHP process.'
+                );
+            } else {
+                $addCheck(
+                    'future_write_permissions',
+                    'Future write locations',
+                    'pass',
+                    'Every future operation parent is currently writable by the Studio PHP process. No write was attempted.'
+                );
+            }
+
+            $sRepairRoot =
+                BX_DIRECTORY_PATH_ROOT
+                . 'tmp/my-una-doctor-repairs/';
+
+            $sRepairParent =
+                dirname(
+                    rtrim(
+                        $sRepairRoot,
+                        DIRECTORY_SEPARATOR
+                    )
+                );
+
+            $bRepairStorageReady =
+                (
+                    is_dir($sRepairRoot)
+                    && is_writable($sRepairRoot)
+                )
+                || (
+                    !file_exists($sRepairRoot)
+                    && is_dir($sRepairParent)
+                    && is_writable($sRepairParent)
+                );
+
+            if ($bRepairStorageReady) {
+                $addCheck(
+                    'rollback_storage',
+                    'Rollback storage availability',
+                    'pass',
+                    'Doctor repair backup storage is available for a future guarded stage. No backup directory was created.'
+                );
+            } else {
+                $addCheck(
+                    'rollback_storage',
+                    'Rollback storage availability',
+                    'fail',
+                    'Doctor repair backup storage is not currently writable by Studio PHP.'
+                );
+            }
+
+            $aActiveJournal =
+                $this->getActiveRepairJournal(
+                    $sRule,
+                    $sModuleName
+                );
+
+            if (!empty($aActiveJournal)) {
+                $addCheck(
+                    'repair_journal_conflict',
+                    'Active repair journal',
+                    'fail',
+                    'An active repair journal already exists for this repair rule/module.'
+                );
+            } else {
+                $addCheck(
+                    'repair_journal_conflict',
+                    'Active repair journal',
+                    'pass',
+                    'No active repair journal exists for this repair rule/module.'
+                );
+            }
+
+            if ($bLiveOnlyReview) {
+                $addCheck(
+                    'live_only_policy',
+                    'Unexplained live-only policy',
+                    'review',
+                    'At least one unexplained live-only file is present. Doctor classifies it as quarantine-review-only; deletion is not authorized.'
+                );
+            } else {
+                $addCheck(
+                    'live_only_policy',
+                    'Unexplained live-only policy',
+                    'pass',
+                    'No unexplained live-only deletion decision is required by this candidate.'
+                );
+            }
+
+            $aResult['operations'] =
+                $aValidatedOperations;
+
+            $aResult['reference_sha256'] =
+                $sReferenceSha256;
+
+            $aResult['module_version'] =
+                $sInstalledVersion;
+
+            $aResult['repair_backup_root'] =
+                $sRepairRoot;
+
+            /*
+             * Deterministic read-only preflight identity.
+             * This ID is evidence only. It is NOT currently accepted
+             * for reference repair arming.
+             */
+            $aResult['preflight_id'] =
+                hash(
+                    'sha256',
+                    json_encode(
+                        array(
+                            'rule' =>
+                                $sRule,
+
+                            'module' =>
+                                $sModuleName,
+
+                            'version' =>
+                                $sInstalledVersion,
+
+                            'reference_sha256' =>
+                                $sReferenceSha256,
+
+                            'preview_id' =>
+                                (string)(
+                                    $aPreview[
+                                        'preview_id'
+                                    ]
+                                    ?? ''
+                                ),
+
+                            'operations' =>
+                                $aValidatedOperations,
+                        ),
+                        JSON_UNESCAPED_SLASHES
+                    )
+                );
+
+            $bChecksPassed =
+                !$bPathFailure
+                && !$bWritableFailure
+                && $bRepairStorageReady
+                && empty($aActiveJournal);
+
+            $aResult['ok'] =
+                $bChecksPassed;
+
+            $aResult['preflight_complete'] =
+                $bChecksPassed;
+
+            /*
+             * HARD SAFETY BARRIER:
+             *
+             * Existing getRepairArmPlan() requires ready=true.
+             * Reference repair execution is not implemented yet, so
+             * this preflight can never arm the repair.
+             */
+            $aResult['ready'] =
+                false;
+
+            $aResult['ready_for_arm'] =
+                false;
+
+            $aResult['arm_available'] =
+                false;
+
+            $aResult['changes_applied'] =
+                false;
+
+            if (!$bChecksPassed) {
+                $aResult['error'] =
+                    'One or more read-only verified reference preflight checks failed.';
+            } elseif ($bLiveOnlyReview) {
+                $aResult['status'] =
+                    'checks_passed_review_required';
+
+                $aResult['message'] =
+                    'Read-only preflight checks passed. Live-only evidence still requires explicit quarantine policy review. Repair arming remains disabled.';
+            } else {
+                $aResult['status'] =
+                    'checks_passed_arm_disabled';
+
+                $aResult['message'] =
+                    'Read-only preflight checks passed. Repair arming remains deliberately disabled until the reference repair executor is implemented and tested.';
+            }
+
+            return $aResult;
+        }
+
 
         if (
             $sRule
