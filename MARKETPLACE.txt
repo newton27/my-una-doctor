@@ -8,7 +8,7 @@ Marketplace Name — MUST MATCH install/config.php EXACTLY:
 my_una_doctor
 
 Vendor:
-MyUNAWorld
+My UNA World
 
 Current package version:
 0.6.0
@@ -18,7 +18,7 @@ Tools / Administration / Utilities
 
 GLOBAL VENDOR STANDARD
 ----------------------
-MyUNAWorld is the official vendor identity for this module and for all UNA modules developed or maintained by this project. Do not use NewtronJax in module vendor metadata, UNA Marketplace vendor/author presentation, release documentation, Studio product information, screenshots, manuals or future module packages.
+My UNA World is the official vendor identity for this module and for all UNA modules developed or maintained by this project. Do not use NewtronJax in module vendor metadata, UNA Marketplace vendor/author presentation, release documentation, Studio product information, screenshots, manuals or future module packages.
 
 Existing compatibility-sensitive technical identifiers such as module internal names, database prefixes, class prefixes and established module directory paths are not renamed merely to change the vendor brand.
 
@@ -78,7 +78,7 @@ For every release, maintain all of the following in the UNA Marketplace record:
 - Product Title.
 - Exact internal Marketplace Name.
 - Current version matching install/config.php.
-- Vendor/author identity: MyUNAWorld.
+- Vendor/author identity: My UNA World.
 - Category.
 - Search tags.
 - Full product description.
@@ -92,7 +92,7 @@ RELEASE ACCEPTANCE CHECK
 Before a release is considered complete:
 1. Install or update the module on the clean UNA 15 test site.
 2. Open Studio -> Apps Market -> Downloaded.
-3. Confirm the module card shows the correct Studio icon, title, vendor (MyUNAWorld) and version.
+3. Confirm the module card shows the correct Studio icon, title, vendor (My UNA World) and version.
 4. Click the module icon/card to open Info.
 5. Confirm the native UNA product-info popup opens without "Cannot load product info. Try again later."
 6. Confirm title, vendor, version, category, description and screenshots load correctly.
@@ -100,4 +100,4 @@ Before a release is considered complete:
 8. Confirm the Marketplace package version matches install/config.php exactly.
 9. Confirm no user-facing vendor metadata or release artwork identifies the vendor as NewtronJax.
 
-This Downloaded -> Info validation and MyUNAWorld vendor verification are part of the standard release checklist for My UNA Module Doctor and for every UNA module developed or maintained by this project.
+This Downloaded -> Info validation and My UNA World vendor verification are part of the standard release checklist for My UNA Module Doctor and for every UNA module developed or maintained by this project.
