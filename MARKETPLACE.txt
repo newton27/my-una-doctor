@@ -1,8 +1,8 @@
-MY UNA MODULE DOCTOR — UNA MARKETPLACE PACKAGE NOTES
+MY UNA DOCTOR — UNA MARKETPLACE PACKAGE NOTES
 ========================================================
 
 Product title:
-My UNA Module Doctor
+My UNA Doctor
 
 Marketplace Name — MUST MATCH install/config.php EXACTLY:
 my_una_doctor
@@ -30,7 +30,7 @@ MARKETPLACE SUMMARY / PRODUCT INFO
 ----------------------------------
 Know before you upgrade. Know what changed afterward. Know where to look when something goes wrong.
 
-My UNA Module Doctor gives UNA administrators an evidence-driven view of site health from inside Studio. It checks UNA/PHP compatibility, required PHP extensions, module declarations and dependencies, file integrity, database consistency, maintenance state, cron registrations, filesystem conditions and recent actionable logs.
+My UNA Doctor gives UNA administrators an evidence-driven view of site health from inside Studio. It checks UNA/PHP compatibility, required PHP extensions, module declarations and dependencies, file integrity, database consistency, maintenance state, cron registrations, filesystem conditions and recent actionable logs.
 
 The current release includes Compatibility & Upgrade Intelligence. Doctor can check UNA's configured upgrade feed, recognize an already-staged official target package, verify its MD5 and structure, confirm target identity and inspect a limited set of literal compatibility requirements without executing target upgrade code.
 
@@ -56,7 +56,7 @@ SAFETY NOTICE
 -------------
 Back up your website before attempting repairs or upgrades. A current verified backup protects your site if a repair, update or server problem does not go as expected.
 
-My UNA Module Doctor does not blindly repair ambiguous findings, silently rewrite third-party baselines or execute staged UNA upgrade code during a normal health scan.
+My UNA Doctor does not blindly repair ambiguous findings, silently rewrite third-party baselines or execute staged UNA upgrade code during a normal health scan.
 
 STUDIO -> APPS MARKET -> DOWNLOADED -> INFO POPUP
 --------------------------------------------------
@@ -68,7 +68,7 @@ For this module the required Marketplace Name is:
 
     my_una_doctor
 
-Do not rename that Marketplace Name to "My UNA Module Doctor", "my_una_module_doctor" or any other variation. The human-facing Marketplace Product Title may be "My UNA Module Doctor", but the Marketplace Name must remain exactly `my_una_doctor` because that is the `name` value in install/config.php.
+Do not rename that Marketplace Name to "My UNA Doctor", "my_una_module_doctor" or any other variation. The human-facing Marketplace Product Title may be "My UNA Doctor", but the Marketplace Name must remain exactly `my_una_doctor` because that is the `name` value in install/config.php.
 
 The Marketplace record must be published and must contain the matching current version/package. The Marketplace description and screenshots are also the content UNA Studio uses in the native product-info popup.
 
@@ -100,4 +100,4 @@ Before a release is considered complete:
 8. Confirm the Marketplace package version matches install/config.php exactly.
 9. Confirm no user-facing vendor metadata or release artwork identifies the vendor as NewtronJax.
 
-This Downloaded -> Info validation and My UNA World vendor verification are part of the standard release checklist for My UNA Module Doctor and for every UNA module developed or maintained by this project.
+This Downloaded -> Info validation and My UNA World vendor verification are part of the standard release checklist for My UNA Doctor and for every UNA module developed or maintained by this project.
