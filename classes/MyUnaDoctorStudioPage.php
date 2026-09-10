@@ -354,7 +354,7 @@ class MyUnaDoctorStudioPage extends BxTemplStudioModule
             . 'module.php?name=my_una_doctor'
             . '&page=reference_packages';
 
-        $s = $this->referencePackageCss();
+        $s = $this->css() . $this->referencePackageCss();
 
         $s .= '<div class="mud-ref">';
 
@@ -380,12 +380,7 @@ class MyUnaDoctorStudioPage extends BxTemplStudioModule
                 );
         }
 
-        $s .= $this->renderModuleReferenceLibrary(
-            $aLibraryRows,
-            $aLibrarySummary,
-            $sAction,
-            (string)$sCsrfToken
-        );
+
 
         $s .=
             '<div class="mud-ref-card">'
@@ -433,6 +428,13 @@ class MyUnaDoctorStudioPage extends BxTemplStudioModule
             . '</p>'
             . '</form>'
             . '</div>';
+
+        $s .= $this->renderModuleReferenceLibrary(
+            $aLibraryRows,
+            $aLibrarySummary,
+            $sAction,
+            (string)$sCsrfToken
+        );
 
         $s .= <<<'HTML'
 <script>
@@ -7961,7 +7963,18 @@ MUDAUTOCONTINUE;
                 return;
             }
 
-            if (!form.closest(".mud-wrap")) {
+            const actionInput =
+                form.querySelector("input[name=mud_action]");
+            const referenceAction =
+                actionInput ? actionInput.value : "";
+            const isReferenceComparison =
+                !!form.closest(".mud-ref") &&
+                (
+                    referenceAction === "compare_reference_package" ||
+                    referenceAction === "compare_saved_reference"
+                );
+
+            if (!form.closest(".mud-wrap") && !isReferenceComparison) {
                 return;
             }
 
@@ -8029,8 +8042,222 @@ MUDAUTOCONTINUE;
                 </div>
             `;
 
+            if (isReferenceComparison) {
+                overlay.querySelector("strong").textContent =
+                    referenceAction === "compare_reference_package"
+                        ? "Doctor is uploading and comparing the reference ZIP…"
+                        : "Doctor is comparing the saved reference…";
+
+                overlay.querySelector(".mud-activity-copy").textContent =
+                    "Checking the reference package against the installed module. "
+                    + "This comparison does not replace or modify live module files.";
+
+                overlay.querySelector(".mud-activity-warning").textContent =
+                    "Keep this page open until the comparison finishes. Do not submit again.";
+            }
+
             document.body.appendChild(overlay);
         }, true);
+
+        /* MUD_LONG_GET_ACTIVITY_START */
+
+        /*
+         * Long-running Doctor GET actions.
+         *
+         * Full Health Scan, verified repair Preview and read-only
+         * Preflight use normal links rather than forms, so reuse
+         * the existing Doctor activity overlay for those requests.
+         *
+         * Visual feedback only. No maintenance or repair mutation.
+         */
+        document.addEventListener("click", function(event) {
+            if (
+                event.defaultPrevented ||
+                event.button !== 0 ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey
+            ) {
+                return;
+            }
+
+            const link =
+                event.target.closest("a[href]");
+
+            if (!link) {
+                return;
+            }
+
+            let url;
+
+            try {
+                url = new URL(
+                    link.href,
+                    window.location.href
+                );
+            } catch (error) {
+                return;
+            }
+
+            if (
+                url.searchParams.get("name")
+                !== "my_una_doctor"
+            ) {
+                return;
+            }
+
+            let title = "";
+            let copy = "";
+
+            if (
+                url.searchParams.get("page") === "overview" &&
+                url.searchParams.get("run") === "1"
+            ) {
+                title =
+                    "Doctor is running a full health scan…";
+
+                copy =
+                    "Checking UNA health, module integrity, "
+                    + "update readiness, logs, storage, "
+                    + "reference evidence and repair candidates.";
+            } else if (
+                url.searchParams.get("page")
+                    === "repair_candidates" &&
+                url.searchParams.get("preview")
+            ) {
+                title =
+                    "Doctor is preparing the repair preview…";
+
+                copy =
+                    "Re-checking the current repair evidence "
+                    + "before showing the verified preview.";
+            } else if (
+                url.searchParams.get("page")
+                    === "repair_candidates" &&
+                url.searchParams.get("preflight")
+            ) {
+                title =
+                    "Doctor is running read-only preflight…";
+
+                copy =
+                    "Revalidating the reference, module identity, "
+                    + "paths, rollback readiness and safety gates.";
+            } else {
+                return;
+            }
+
+            if (link.dataset.mudBusy === "1") {
+                event.preventDefault();
+                return;
+            }
+
+            link.dataset.mudBusy = "1";
+
+            link.classList.add(
+                "mud-working-button"
+            );
+
+            link.setAttribute(
+                "aria-disabled",
+                "true"
+            );
+
+            /*
+             * Existing Show Activity setting controls graphics.
+             * Duplicate-click protection remains active regardless.
+             */
+            if (!mudShowActivity) {
+                return;
+            }
+
+            const activityOverlay =
+                document.createElement("div");
+
+            activityOverlay.className =
+                "mud-activity-overlay";
+
+            activityOverlay.innerHTML = `
+                <div class="mud-activity-panel"
+                     role="status"
+                     aria-live="assertive">
+
+                    <div class="mud-activity-icon"
+                         aria-hidden="true"></div>
+
+                    <strong></strong>
+
+                    <div class="mud-activity-copy"></div>
+
+                    <div class="mud-activity-track"
+                         aria-hidden="true">
+                        <span></span>
+                    </div>
+
+                    <div class="mud-activity-warning">
+                        Keep this page open until Doctor finishes.
+                    </div>
+                </div>
+            `;
+
+            const titleNode =
+                activityOverlay.querySelector(
+                    "strong"
+                );
+
+            const copyNode =
+                activityOverlay.querySelector(
+                    ".mud-activity-copy"
+                );
+
+            if (titleNode) {
+                titleNode.textContent = title;
+            }
+
+            if (copyNode) {
+                copyNode.textContent = copy;
+            }
+
+            document.body.appendChild(
+                activityOverlay
+            );
+        }, true);
+
+        /*
+         * Clear stale activity state if the browser restores this
+         * page from the back-forward cache.
+         */
+        window.addEventListener(
+            "pageshow",
+            function() {
+                document
+                    .querySelectorAll(
+                        ".mud-activity-overlay"
+                    )
+                    .forEach(function(node) {
+                        node.remove();
+                    });
+
+                document
+                    .querySelectorAll(
+                        "[data-mud-busy=\"1\"]"
+                    )
+                    .forEach(function(node) {
+                        delete node.dataset.mudBusy;
+
+                        node.classList.remove(
+                            "mud-working-button"
+                        );
+
+                        node.removeAttribute(
+                            "aria-disabled"
+                        );
+                    });
+            }
+        );
+
+        /* MUD_LONG_GET_ACTIVITY_END */
+
         </script>';
     }
 

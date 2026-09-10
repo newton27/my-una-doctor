@@ -4,6 +4,36 @@ All notable development milestones for My UNA Doctor are recorded here.
 
 The project follows a conservative safety model: **Diagnose first. Repair only when the evidence is clear.**
 
+## 0.6.3 — Activity Feedback & Long-Running Action UX
+
+- Added Doctor activity feedback for uploaded and saved Reference Package comparisons.
+- Added activity feedback for Full Health Scan, verified repair Preview, and read-only Preflight actions.
+- Added duplicate-click protection while long-running Doctor actions are in progress.
+- Added browser back/forward-cache cleanup so stale activity state is not retained after navigation.
+- Retains all 0.6.2 log-classification and 0.6.1 packaging-integrity corrections.
+
+See [0.6.3 release checkpoint](docs/RELEASE-0.6.3.md).
+
+## 0.6.2 — UNA Upgrade-Poll Log Classification
+
+- Reclassified the exact UNA core log entry `[upgrade] Cannot get a list of modules which require to be updated.` as informational evidence rather than a health-impacting error by itself.
+- The entry remains visible in Doctor's log evidence and history.
+- Actual upgrade health continues to be determined by Doctor's separate UNA version, upgrade-target, maintenance, compatibility and checksum/readiness checks.
+- Generic CRON errors, PHP warnings, database errors and other unrelated error-level log entries remain health-impacting.
+- All 0.6.1 UNA-safe SQL packaging and clean-uninstall corrections are retained.
+
+## 0.6.1 — Packaging Integrity & Clean Uninstall
+
+- Corrected UNA install and uninstall SQL so every SQL statement occupies one physical line, preventing UNA's module SQL processor from collapsing required whitespace.
+- Added missing uninstall cleanup for `my_una_doctor_repair_knowledge`.
+- Added install/uninstall table-symmetry validation.
+- Added validation for all 11 My UNA Doctor options.
+- Verified Studio registration and uninstall cleanup coverage.
+- Removed development backup artifacts from the distributable package.
+- Standardized the UNA Marketplace ZIP layout to a single `my_una_doctor/` package root.
+- Verified PHP 8.3 syntax across the packaged PHP source.
+- Certified installation work against a pristine UNA 15.0.0-RC1 reference environment.
+
 ## 0.6.0 — Compatibility & Upgrade Intelligence
 
 - Added installed UNA/PHP compatibility detection from local UNA source.
