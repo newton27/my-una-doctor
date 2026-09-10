@@ -4,6 +4,19 @@ All notable development milestones for My UNA Doctor are recorded here.
 
 The project follows a conservative safety model: **Diagnose first. Repair only when the evidence is clear.**
 
+## 0.6.4 — Reference Library Display Scaling
+
+- Added an adjustable Saved Reference Library text-size control.
+- Supports 50% through 125% scaling in 5% increments.
+- Added live percentage feedback and one-click Reset to 100%.
+- Persists the administrator's preferred size in browser local storage.
+- Scaling is restricted to Saved Reference Library cards and evidence.
+- Converts library-specific typography to relative sizing so card content scales consistently.
+- No Doctor review logic, module files, reference evidence, or database data are modified by the display control.
+- Retains all 0.6.3 activity-feedback and duplicate-action protections.
+
+See [0.6.4 release checkpoint](docs/RELEASE-0.6.4.md).
+
 ## 0.6.3 — Activity Feedback & Long-Running Action UX
 
 - Added Doctor activity feedback for uploaded and saved Reference Package comparisons.

@@ -11,7 +11,7 @@ Vendor:
 NewtronJax
 
 Version:
-0.6.2
+0.6.4
 
 Category:
 Tools / Administration / Utilities
@@ -26,7 +26,7 @@ Know before you upgrade. Know what changed afterward. Know where to look when so
 
 My UNA Doctor gives UNA administrators an evidence-driven view of site health from inside Studio. It checks UNA/PHP compatibility, required PHP extensions, module declarations and dependencies, file integrity, database consistency, maintenance state, cron registrations, filesystem conditions and recent actionable logs.
 
-Version 0.6.2 refines UNA log diagnostics so the core module-update poll message produced by an empty update list is retained as informational evidence instead of being scored as a current health warning. The 0.6.1 packaging-integrity and clean-uninstall corrections remain included.
+Version 0.6.4 adds adjustable text scaling to the Saved Module Reference Library, with a 50%–125% range, live percentage display, one-click reset, and browser-local persistence. The display control does not modify Doctor review logic, module files, reference evidence, or database data. All 0.6.3 activity-feedback and earlier safety improvements remain included.
 
 FEATURES
 --------
