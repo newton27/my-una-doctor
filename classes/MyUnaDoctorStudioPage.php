@@ -8495,6 +8495,19 @@ MUDAUTOCONTINUE;
             font-weight:700;
             font-size:13px
         }
+        .mud-activity-detail{
+            display:flex;
+            justify-content:space-between;
+            gap:16px;
+            margin-top:10px;
+            font-size:12px;
+            opacity:.68
+        }
+        .mud-activity-phase{text-align:left}
+        .mud-activity-elapsed{
+            flex:none;
+            font-variant-numeric:tabular-nums
+        }
         .mud-activity-icon{
             width:44px;
             height:44px;
@@ -8551,6 +8564,44 @@ MUDAUTOCONTINUE;
                 : 'false'
         ) . ';
 
+        function mudStartActivityMotion(overlay, phases) {
+            const phaseNode = overlay.querySelector(".mud-activity-phase");
+            const elapsedNode = overlay.querySelector(".mud-activity-elapsed");
+            const startedAt = Date.now();
+            const activityPhases =
+                Array.isArray(phases) && phases.length
+                    ? phases
+                    : ["Starting…", "Working…", "Still working safely…"];
+
+            const updateActivity = function() {
+                const elapsedSeconds = Math.max(
+                    0,
+                    Math.floor((Date.now() - startedAt) / 1000)
+                );
+                const minutes = Math.floor(elapsedSeconds / 60);
+                const seconds = String(elapsedSeconds % 60).padStart(2, "0");
+                const phaseIndex =
+                    Math.floor(elapsedSeconds / 5) % activityPhases.length;
+
+                if (phaseNode)
+                    phaseNode.textContent = activityPhases[phaseIndex];
+
+                if (elapsedNode)
+                    elapsedNode.textContent =
+                        minutes + ":" + seconds + " elapsed";
+            };
+
+            updateActivity();
+            overlay.dataset.mudActivityTimer =
+                String(window.setInterval(updateActivity, 1000));
+        }
+
+        function mudContinueAfterPaint(callback) {
+            window.requestAnimationFrame(function() {
+                window.requestAnimationFrame(callback);
+            });
+        }
+
         document.addEventListener("submit", function(event) {
             const form = event.target;
 
@@ -8563,6 +8614,11 @@ MUDAUTOCONTINUE;
             }
 
             if (!form.querySelector("input[name=mud_action]")) {
+                return;
+            }
+
+            if (form.dataset.mudRelease === "1") {
+                delete form.dataset.mudRelease;
                 return;
             }
 
@@ -8620,6 +8676,12 @@ MUDAUTOCONTINUE;
                         <span></span>
                     </div>
 
+                    <div class="mud-activity-detail"
+                         aria-hidden="true">
+                        <span class="mud-activity-phase">Starting…</span>
+                        <span class="mud-activity-elapsed">0:00 elapsed</span>
+                    </div>
+
                     <div class="mud-activity-warning">
                         Do not refresh or submit again.
                     </div>
@@ -8627,6 +8689,31 @@ MUDAUTOCONTINUE;
             `;
 
             document.body.appendChild(overlay);
+
+            mudStartActivityMotion(
+                overlay,
+                [
+                    "Securing the request…",
+                    "Verifying current evidence…",
+                    "Recording the result…",
+                    "Still working safely…"
+                ]
+            );
+
+            /*
+             * Give the browser two frames to paint the activity popup
+             * before the long-running submission begins.
+             */
+            event.preventDefault();
+
+            mudContinueAfterPaint(function() {
+                form.dataset.mudRelease = "1";
+
+                if (button && typeof form.requestSubmit === "function")
+                    form.requestSubmit(button);
+                else
+                    form.submit();
+            });
         }, true);
 
         /* MUD_LONG_GET_ACTIVITY_START */
@@ -8764,6 +8851,12 @@ MUDAUTOCONTINUE;
                         <span></span>
                     </div>
 
+                    <div class="mud-activity-detail"
+                         aria-hidden="true">
+                        <span class="mud-activity-phase">Starting…</span>
+                        <span class="mud-activity-elapsed">0:00 elapsed</span>
+                    </div>
+
                     <div class="mud-activity-warning">
                         Keep this page open until Doctor finishes.
                     </div>
@@ -8788,9 +8881,30 @@ MUDAUTOCONTINUE;
                 copyNode.textContent = copy;
             }
 
+            /*
+             * Paint the popup and start its CSS animations before
+             * navigation hands control to the long-running request.
+             */
+            event.preventDefault();
+
             document.body.appendChild(
                 activityOverlay
             );
+
+            mudStartActivityMotion(
+                activityOverlay,
+                [
+                    "Starting the requested check…",
+                    "Scanning current site state…",
+                    "Testing integrity and readiness…",
+                    "Reviewing evidence…",
+                    "Still working safely…"
+                ]
+            );
+
+            mudContinueAfterPaint(function() {
+                window.location.assign(url.href);
+            });
         }, true);
 
         /*
@@ -8805,6 +8919,13 @@ MUDAUTOCONTINUE;
                         ".mud-activity-overlay"
                     )
                     .forEach(function(node) {
+                        const timer = Number(
+                            node.dataset.mudActivityTimer
+                        );
+
+                        if (Number.isFinite(timer))
+                            window.clearInterval(timer);
+
                         node.remove();
                     });
 
