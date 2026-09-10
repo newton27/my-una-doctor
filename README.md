@@ -3,7 +3,7 @@
 **Health, Compatibility & Upgrade Readiness for UNA**
 
 Version: **0.6.0**  
-Vendor: **NewtronJax**
+Vendor: **My UNA World**
 
 > Know before you upgrade. Know what changed afterward. Know where to look when something goes wrong.
 
