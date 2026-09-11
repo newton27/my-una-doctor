@@ -1,10 +1,10 @@
-MY UNA DOCTOR 0.6.0 — INSTALLATION & SAFETY GUIDE
+MY UNA DOCTOR 0.6.4 CANDIDATE — INSTALLATION & SAFETY GUIDE
 ===================================================
 
 Product: My UNA Doctor
-Vendor: NewtronJax
+Vendor: My UNA World
 Type: Studio-only UNA CMS module
-Build: 0.6.0
+Build: 0.6.4 CANDIDATE — validation pending
 
 IMPORTANT
 ---------
@@ -129,4 +129,5 @@ Run a fresh full health scan and confirm:
 - any update-readiness blockers are reviewed before continuing.
 
 Keep the verified backup until the site and Studio have both been confirmed stable.
+
 

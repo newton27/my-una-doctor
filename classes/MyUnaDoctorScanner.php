@@ -6011,6 +6011,35 @@ class MyUnaDoctorScanner
             return $aResult;
         }
 
+        /*
+         * UNA's module-upgrade polling routine can log this exact
+         * message when its module-update check produces an empty
+         * result. The core routine may then return success.
+         *
+         * This message alone therefore does not establish an
+         * unhealthy UNA installation. Doctor retains it as
+         * informational evidence while its independent upgrade
+         * target, maintenance, compatibility and checksum checks
+         * determine actual upgrade health.
+         */
+        if (
+            stripos(
+                $sText,
+                '[upgrade] Cannot get a list of modules which require to be updated.'
+            ) !== false
+        ) {
+            $aResult['health_impact'] = false;
+            $aResult['classification'] =
+                'una_upgrade_poll';
+
+            $aResult['evidence'] = array(
+                'reason' =>
+                    'UNA core may emit this message when its module-update check returns an empty result. Doctor keeps the entry visible as informational evidence; current upgrade-target, maintenance, compatibility and checksum checks determine upgrade health separately.',
+            );
+
+            return $aResult;
+        }
+
         if ($this->isStudioAdministrativeFailure($sText)) {
             $aResult['health_impact'] = false;
             $aResult['classification'] = 'administrative_operation';
@@ -6362,3 +6391,4 @@ class MyUnaDoctorScanner
         return is_string($s) ? $s : '';
     }
 }
+

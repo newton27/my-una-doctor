@@ -14,7 +14,7 @@ $aConfig = array(
     'name' => 'my_una_doctor',
     'title' => 'My UNA Doctor',
     'note' => 'Studio-only UNA health diagnostics, integrity checks and scan history.',
-    'version' => '0.6.1',
+    'version' => '0.6.4',
     'vendor' => 'My UNA World',
     'help_url' => '',
 
@@ -59,3 +59,4 @@ $aConfig = array(
 );
 
 /** @} */
+

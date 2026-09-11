@@ -11,7 +11,7 @@ Vendor:
 My UNA World
 
 Current package version:
-0.6.1
+0.6.4 (candidate; not published)
 
 Category:
 Tools / Administration / Utilities
@@ -101,3 +101,4 @@ Before a release is considered complete:
 9. Confirm no user-facing vendor metadata or release artwork identifies the vendor as NewtronJax.
 
 This Downloaded -> Info validation and My UNA World vendor verification are part of the standard release checklist for My UNA Doctor and for every UNA module developed or maintained by this project.
+
