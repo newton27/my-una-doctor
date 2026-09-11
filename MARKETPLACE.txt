@@ -11,7 +11,7 @@ Vendor:
 My UNA World
 
 Current package version:
-0.6.1
+0.6.4
 
 Category:
 Tools / Administration / Utilities
@@ -32,7 +32,7 @@ Know before you upgrade. Know what changed afterward. Know where to look when so
 
 My UNA Doctor gives UNA administrators an evidence-driven view of site health from inside Studio. It checks UNA/PHP compatibility, required PHP extensions, module declarations and dependencies, file integrity, database consistency, maintenance state, cron registrations, filesystem conditions and recent actionable logs.
 
-The current release includes Compatibility & Upgrade Intelligence. Doctor can check UNA's configured upgrade feed, recognize an already-staged official target package, verify its MD5 and structure, confirm target identity and inspect a limited set of literal compatibility requirements without executing target upgrade code.
+Version 0.6.4 adds adjustable text scaling to the Saved Module Reference Library, with a 50%–125% range, live percentage display, one-click reset, and browser-local persistence. It retains public 0.6.1 verified-reference repair intelligence and My UNA World Marketplace identity, the 0.6.2 packaging, clean-uninstall and upgrade-poll corrections, and the 0.6.3 long-running activity UX.
 
 FEATURES
 --------

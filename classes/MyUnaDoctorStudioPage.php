@@ -354,7 +354,7 @@ class MyUnaDoctorStudioPage extends BxTemplStudioModule
             . 'module.php?name=my_una_doctor'
             . '&page=reference_packages';
 
-        $s = $this->referencePackageCss();
+        $s = $this->css() . $this->referencePackageCss();
 
         $s .= '<div class="mud-ref">';
 
@@ -380,12 +380,7 @@ class MyUnaDoctorStudioPage extends BxTemplStudioModule
                 );
         }
 
-        $s .= $this->renderModuleReferenceLibrary(
-            $aLibraryRows,
-            $aLibrarySummary,
-            $sAction,
-            (string)$sCsrfToken
-        );
+
 
         $s .=
             '<div class="mud-ref-card">'
@@ -433,6 +428,13 @@ class MyUnaDoctorStudioPage extends BxTemplStudioModule
             . '</p>'
             . '</form>'
             . '</div>';
+
+        $s .= $this->renderModuleReferenceLibrary(
+            $aLibraryRows,
+            $aLibrarySummary,
+            $sAction,
+            (string)$sCsrfToken
+        );
 
         $s .= <<<'HTML'
 <script>
@@ -590,6 +592,45 @@ HTML;
     opacity:.78;
     max-width:58rem;
 }
+
+.mud-library-view-options {
+    display:flex;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:.5rem;
+    margin:.75rem 0 .9rem 0;
+}
+
+.mud-library-view-label {
+    font-weight:600;
+}
+
+.mud-library-text-size-control {
+    display:inline-flex;
+    align-items:center;
+    gap:.45rem;
+    padding:.3rem .55rem;
+    border:1px solid rgba(127,127,127,.22);
+    border-radius:.5rem;
+    background:rgba(127,127,127,.055);
+}
+
+.mud-library-text-size-slider {
+    width:130px;
+    margin:0;
+}
+
+.mud-library-text-size-value {
+    min-width:42px;
+    text-align:center;
+    font-weight:600;
+}
+
+.mud-library-summary,
+.mud-library-grid,
+.mud-library-empty {
+    font-size:var(--mud-doctor-library-text-size, 100%);
+}
 .mud-library-summary {
     display:grid;
     grid-template-columns:
@@ -609,7 +650,7 @@ HTML;
     margin-bottom:.2rem;
 }
 .mud-library-summary-card strong {
-    font-size:1.12rem;
+    font-size:1.12em;
 }
 .mud-library-grid {
     display:grid;
@@ -633,18 +674,18 @@ HTML;
 }
 .mud-library-title {
     font-weight:750;
-    font-size:1.05rem;
+    font-size:1.05em;
 }
 .mud-library-subtitle {
     opacity:.68;
     margin-top:.15rem;
-    font-size:.9rem;
+    font-size:.9em;
 }
 .mud-library-badge {
     display:inline-block;
     border-radius:999px;
     padding:.28rem .58rem;
-    font-size:.78rem;
+    font-size:.78em;
     font-weight:700;
     white-space:nowrap;
 }
@@ -665,7 +706,7 @@ HTML;
     grid-template-columns:
         minmax(110px,.7fr) minmax(0,1.3fr);
     gap:.38rem .75rem;
-    font-size:.9rem;
+    font-size:.9em;
 }
 .mud-library-meta-label {
     opacity:.68;
@@ -676,7 +717,7 @@ HTML;
 }
 .mud-library-sha {
     font-family:monospace;
-    font-size:.78rem;
+    font-size:.78em;
 }
 .mud-library-actions {
     margin-top:.8rem;
@@ -689,7 +730,7 @@ HTML;
     margin:0;
 }
 .mud-library-action-note {
-    font-size:.82rem;
+    font-size:.82em;
     opacity:.68;
 }
 .mud-library-note {
@@ -697,7 +738,7 @@ HTML;
     padding:.65rem .75rem;
     border-radius:.65rem;
     background:rgba(127,127,127,.07);
-    font-size:.88rem;
+    font-size:.88em;
 }
 .mud-library-empty {
     border:1px dashed rgba(128,128,128,.35);
@@ -734,6 +775,123 @@ HTML;
             . '</p>'
             . '</div>'
             . '</div>';
+
+        $s .= <<<'HTML'
+<div class="mud-library-view-options">
+    <span class="mud-library-view-label">View Options:</span>
+
+    <span class="mud-library-text-size-control">
+        <span>Text Size</span>
+
+        <input
+            type="range"
+            class="mud-library-text-size-slider"
+            min="50"
+            max="125"
+            step="5"
+            value="100"
+            aria-label="Reference Library text size"
+        >
+
+        <output class="mud-library-text-size-value">100%</output>
+
+        <button
+            type="button"
+            class="bx-btn mud-library-text-size-reset"
+        >Reset</button>
+    </span>
+</div>
+
+<script>
+(function () {
+    var storageKey =
+        "myUnaDoctorReferenceLibraryTextSize";
+
+    var library =
+        document.querySelector(".mud-library");
+
+    var slider =
+        document.querySelector(
+            ".mud-library-text-size-slider"
+        );
+
+    var value =
+        document.querySelector(
+            ".mud-library-text-size-value"
+        );
+
+    if (!library || !slider || !value)
+        return;
+
+    function applyTextSize(size, persist) {
+        size = parseInt(size, 10);
+
+        if (isNaN(size))
+            size = 100;
+
+        size = Math.max(
+            50,
+            Math.min(125, size)
+        );
+
+        library.style.setProperty(
+            "--mud-doctor-library-text-size",
+            size + "%"
+        );
+
+        slider.value = size;
+        value.textContent = size + "%";
+
+        if (persist) {
+            try {
+                localStorage.setItem(
+                    storageKey,
+                    String(size)
+                );
+            } catch (e) {}
+        }
+    }
+
+    var savedSize = 100;
+
+    try {
+        var stored =
+            localStorage.getItem(storageKey);
+
+        if (stored !== null)
+            savedSize = stored;
+    } catch (e) {}
+
+    applyTextSize(savedSize, false);
+
+    slider.addEventListener(
+        "input",
+        function () {
+            applyTextSize(
+                this.value,
+                true
+            );
+        }
+    );
+
+    document.addEventListener(
+        "click",
+        function (event) {
+            if (
+                event.target.closest(
+                    ".mud-library-text-size-reset"
+                )
+            ) {
+                applyTextSize(
+                    100,
+                    true
+                );
+            }
+        }
+    );
+})();
+</script>
+HTML;
 
         $s .= '<div class="mud-library-summary">';
 
@@ -8558,7 +8716,18 @@ MUDAUTOCONTINUE;
                 return;
             }
 
-            if (!form.closest(".mud-wrap")) {
+            const actionInput =
+                form.querySelector("input[name=mud_action]");
+            const referenceAction =
+                actionInput ? actionInput.value : "";
+            const isReferenceComparison =
+                !!form.closest(".mud-ref") &&
+                (
+                    referenceAction === "compare_reference_package" ||
+                    referenceAction === "compare_saved_reference"
+                );
+
+            if (!form.closest(".mud-wrap") && !isReferenceComparison) {
                 return;
             }
 
@@ -8625,6 +8794,20 @@ MUDAUTOCONTINUE;
                     </div>
                 </div>
             `;
+
+            if (isReferenceComparison) {
+                overlay.querySelector("strong").textContent =
+                    referenceAction === "compare_reference_package"
+                        ? "Doctor is uploading and comparing the reference ZIP…"
+                        : "Doctor is comparing the saved reference…";
+
+                overlay.querySelector(".mud-activity-copy").textContent =
+                    "Checking the reference package against the installed module. "
+                    + "This comparison does not replace or modify live module files.";
+
+                overlay.querySelector(".mud-activity-warning").textContent =
+                    "Keep this page open until the comparison finishes. Do not submit again.";
+            }
 
             document.body.appendChild(overlay);
         }, true);
