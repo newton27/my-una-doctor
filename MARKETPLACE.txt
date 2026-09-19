@@ -11,7 +11,7 @@ Vendor:
 My UNA World
 
 Current package version:
-0.6.4
+0.6.5
 
 Category:
 Tools / Administration / Utilities
@@ -32,7 +32,7 @@ Know before you upgrade. Know what changed afterward. Know where to look when so
 
 My UNA Doctor gives UNA administrators an evidence-driven view of site health from inside Studio. It checks UNA/PHP compatibility, required PHP extensions, module declarations and dependencies, file integrity, database consistency, maintenance state, cron registrations, filesystem conditions and recent actionable logs.
 
-Version 0.6.4 adds adjustable text scaling to the Saved Module Reference Library, with a 50%–125% range, live percentage display, one-click reset, and browser-local persistence. It retains public 0.6.1 verified-reference repair intelligence and My UNA World Marketplace identity, the 0.6.2 packaging, clean-uninstall and upgrade-poll corrections, and the 0.6.3 long-running activity UX.
+Version 0.6.5 adds reliably painted long-running activity feedback with rotating work phases and elapsed time. Reduced-motion mode uses a static indicator, and the Saved Module Reference Library supports an 80%–125% browser-local text-size preference. It retains Compatibility & Upgrade Intelligence, verified-reference safeguards and duplicate-action protection without enabling destructive reference repair.
 
 FEATURES
 --------
@@ -101,3 +101,4 @@ Before a release is considered complete:
 9. Confirm no user-facing vendor metadata or release artwork identifies the vendor as NewtronJax.
 
 This Downloaded -> Info validation and My UNA World vendor verification are part of the standard release checklist for My UNA Doctor and for every UNA module developed or maintained by this project.
+

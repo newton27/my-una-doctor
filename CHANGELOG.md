@@ -4,54 +4,18 @@ All notable development milestones for My UNA Doctor are recorded here.
 
 The project follows a conservative safety model: **Diagnose first. Repair only when the evidence is clear.**
 
-## 0.6.4 — Reference Library Display Scaling
+## 0.6.5 — Activity Motion & Library Accessibility
 
-- Added an adjustable Saved Reference Library text-size control.
-- Supports 50% through 125% scaling in 5% increments.
-- Added live percentage feedback and one-click Reset to 100%.
-- Persists the administrator's preferred size in browser local storage.
-- Scaling is restricted to Saved Reference Library cards and evidence.
-- Converts library-specific typography to relative sizing so card content scales consistently.
-- No Doctor review logic, module files, reference evidence, or database data are modified by the display control.
-- Retains all 0.6.3 activity-feedback and duplicate-action protections.
+- Ensured supported forms and links paint the Doctor activity popup before submission or navigation.
+- Added rotating work phases and elapsed time for long-running actions.
+- Preserved duplicate-submit, duplicate-click and browser restoration protections.
+- Replaced continuous animation with a static indicator when reduced motion is requested.
+- Raised the Saved Reference Library minimum text scale from 50% to 80%.
+- Corrected stale source documentation for saved-reference comparison.
+- Preserved all repair barriers and reference-integrity checks.
+- Passed staged PHP validation, source-scope audit and browser workflow testing.
 
-See [0.6.4 release checkpoint](docs/RELEASE-0.6.4.md).
-
-## 0.6.3 — Activity Feedback & Long-Running Action UX
-
-- Added Doctor activity feedback for uploaded and saved Reference Package comparisons.
-- Added activity feedback for Full Health Scan, verified repair Preview, and read-only Preflight actions.
-- Added duplicate-click protection while long-running Doctor actions are in progress.
-- Added browser back/forward-cache cleanup so stale activity state is not retained after navigation.
-- Retains the 0.6.2 packaging, clean-uninstall and log-classification corrections together with the public 0.6.1 verified-reference and Marketplace functionality.
-
-See [0.6.3 release checkpoint](docs/RELEASE-0.6.3.md).
-
-## 0.6.2 — Packaging Integrity, Clean Uninstall & Upgrade-Poll Classification
-
-- Corrected UNA install and uninstall SQL so every SQL statement occupies one physical line.
-- Added missing uninstall cleanup for `my_una_doctor_repair_knowledge`.
-- Verified install/uninstall table symmetry and Doctor settings/Studio cleanup.
-- Standardized the distributable ZIP to the single `my_una_doctor/` UNA package root.
-- Excluded development and backup artifacts from release packaging.
-- Reclassified the exact UNA core log entry `[upgrade] Cannot get a list of modules which require to be updated.` as informational evidence rather than a health-impacting error by itself.
-- Other unrelated error-level log entries remain health-impacting.
-- Retains the verified-reference repair intelligence and My UNA World Marketplace identity introduced in public release 0.6.1.
-
-See [0.6.2 release checkpoint](docs/RELEASE-0.6.2.md).
-
-## 0.6.1 — Verified Reference Repair Intelligence & Marketplace Packaging
-
-- Added read-only saved-reference comparison.
-- Added verified module-reference drift classification.
-- Added SHA-bound Verified Reference Repair Preview.
-- Added read-only Verified Reference Preflight.
-- Kept destructive verified-reference repair and Arm disabled.
-- Preserved runtime-generated module-content classifications.
-- Standardized the public vendor identity as My UNA World.
-- Added Marketplace packaging and product-information support.
-
-See [0.6.1 release checkpoint](docs/RELEASE-0.6.1.md).
+See [0.6.5 release checkpoint](docs/RELEASE-0.6.5.md).
 
 ## 0.6.0 — Compatibility & Upgrade Intelligence
 

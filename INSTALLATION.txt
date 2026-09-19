@@ -1,10 +1,10 @@
-MY UNA DOCTOR 0.6.4 — INSTALLATION & SAFETY GUIDE
+MY UNA DOCTOR 0.6.5 — INSTALLATION & SAFETY GUIDE
 ===================================================
 
 Product: My UNA Doctor
 Vendor: My UNA World
 Type: Studio-only UNA CMS module
-Build: 0.6.4
+Build: 0.6.5
 
 IMPORTANT
 ---------
@@ -59,7 +59,7 @@ Warnings and informational findings should be reviewed before attempting a repai
 
 5. COMPATIBILITY INTELLIGENCE
 -----------------------------
-Version 0.6.4 reads compatibility evidence from the installed UNA environment.
+Version 0.6.0 reads compatibility evidence from the installed UNA environment.
 
 Doctor verifies the local UNA minimum PHP requirement, required PHP extensions, registered module compatibility declarations and declared dependencies.
 
@@ -129,4 +129,5 @@ Run a fresh full health scan and confirm:
 - any update-readiness blockers are reviewed before continuing.
 
 Keep the verified backup until the site and Studio have both been confirmed stable.
+
 

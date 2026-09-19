@@ -536,9 +536,9 @@ HTML;
     /**
      * Render saved immutable Module Reference Library items.
      *
-     * UI stage #3 is deliberately read-only. There is no
-     * action button capable of executing a comparison from a
-     * stored ZIP yet.
+     * Saved references remain immutable evidence. Compare Again
+     * re-verifies and compares a stored ZIP, updating comparison
+     * history without changing live module files.
      */
     protected function renderModuleReferenceLibrary(
         array $aRows,
@@ -786,7 +786,7 @@ HTML;
         <input
             type="range"
             class="mud-library-text-size-slider"
-            min="50"
+            min="80"
             max="125"
             step="5"
             value="100"
@@ -830,7 +830,7 @@ HTML;
             size = 100;
 
         size = Math.max(
-            50,
+            80,
             Math.min(125, size)
         );
 
@@ -8708,7 +8708,12 @@ MUDAUTOCONTINUE;
         @media (prefers-reduced-motion:reduce){
             .mud-activity-icon,
             .mud-activity-track span{
-                animation-duration:2.5s
+                animation:none
+            }
+            .mud-activity-track span{
+                left:0;
+                width:100%;
+                opacity:.35
             }
         }
         </style>
@@ -8844,7 +8849,6 @@ MUDAUTOCONTINUE;
                          aria-hidden="true">
                         <span></span>
                     </div>
-
                     <div class="mud-activity-detail"
                          aria-hidden="true">
                         <span class="mud-activity-phase">Starting…</span>
@@ -8883,10 +8887,6 @@ MUDAUTOCONTINUE;
                 ]
             );
 
-            /*
-             * Give the browser two frames to paint the activity popup
-             * before the long-running submission begins.
-             */
             event.preventDefault();
 
             mudContinueAfterPaint(function() {
@@ -9033,7 +9033,6 @@ MUDAUTOCONTINUE;
                          aria-hidden="true">
                         <span></span>
                     </div>
-
                     <div class="mud-activity-detail"
                          aria-hidden="true">
                         <span class="mud-activity-phase">Starting…</span>
@@ -9064,10 +9063,6 @@ MUDAUTOCONTINUE;
                 copyNode.textContent = copy;
             }
 
-            /*
-             * Paint the popup and start its CSS animations before
-             * navigation hands control to the long-running request.
-             */
             event.preventDefault();
 
             document.body.appendChild(
