@@ -11,7 +11,7 @@ Vendor:
 My UNA World
 
 Current package version:
-0.6.5
+0.6.4 (candidate; not published)
 
 Category:
 Tools / Administration / Utilities

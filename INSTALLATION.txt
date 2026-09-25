@@ -1,10 +1,10 @@
-MY UNA DOCTOR 0.6.5 — INSTALLATION & SAFETY GUIDE
+MY UNA DOCTOR 0.6.4 CANDIDATE — INSTALLATION & SAFETY GUIDE
 ===================================================
 
 Product: My UNA Doctor
 Vendor: My UNA World
 Type: Studio-only UNA CMS module
-Build: 0.6.5
+Build: 0.6.4 CANDIDATE — validation pending
 
 IMPORTANT
 ---------
