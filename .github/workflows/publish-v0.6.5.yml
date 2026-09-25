@@ -1,0 +1,74 @@
+name: Publish My UNA Doctor 0.6.5
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publish-v0.6.5.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Verify, package and publish 0.6.5
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify release metadata and wording
+        run: |
+          grep -F "'version' => '0.6.5'" install/config.php
+          grep -F "Version: **0.6.5**" README.md
+          grep -F "Current package version:" MARKETPLACE.txt
+          grep -A1 -F "Current package version:" MARKETPLACE.txt | grep -F "0.6.5"
+          ! grep -RniE 'reconciliation candidate|candidate version|status: not released|first test build|validated for packaging|publication.*approval-controlled' \
+            install/config.php README.md INSTALLATION.txt MARKETPLACE.txt CHANGELOG.md docs/RELEASE-0.6.5.md docs/RELEASE-0.6.4.md
+
+      - name: Validate PHP and XML
+        run: |
+          find . -type f -name '*.php' -print0 |
+            xargs -0 -n1 php -l
+          php -r '$x = simplexml_load_file("install/langs/en.xml"); if ($x === false) { exit(1); }'
+
+      - name: Build UNA package
+        run: |
+          set -euo pipefail
+          root="dist/stage/my_una_doctor"
+          mkdir -p "$root/docs"
+          cp CHANGELOG.md INSTALLATION.txt MARKETPLACE-DESCRIPTION.html \
+            MARKETPLACE.txt README.md cover.jpg request.php "$root/"
+          cp -a classes install template "$root/"
+          cp docs/RELEASE-0.3.4.md docs/RELEASE-0.5.0.md \
+            docs/RELEASE-0.6.0.md docs/RELEASE-0.6.1.md \
+            docs/RELEASE-0.6.4.md docs/RELEASE-0.6.5.md \
+            docs/REPAIR-BARRIER-2.md docs/RUNTIME-PROTECTION.md "$root/docs/"
+          (
+            cd dist/stage
+            zip -X -q -r ../my-una-doctor-0.6.5.zip my_una_doctor
+          )
+          (
+            cd dist
+            sha256sum my-una-doctor-0.6.5.zip > my-una-doctor-0.6.5.zip.sha256
+          )
+          unzip -t dist/my-una-doctor-0.6.5.zip
+          test "$(unzip -Z1 dist/my-una-doctor-0.6.5.zip | head -n1)" = "my_una_doctor/"
+
+      - name: Publish controlled GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.6.5 >/dev/null 2>&1; then
+            echo 'v0.6.5 already exists; refusing to replace it.'
+            exit 1
+          fi
+          gh release create v0.6.5 \
+            --target "$GITHUB_SHA" \
+            --title "My UNA Doctor 0.6.5" \
+            --notes-file docs/RELEASE-0.6.5.md \
+            dist/my-una-doctor-0.6.5.zip \
+            dist/my-una-doctor-0.6.5.zip.sha256
+

@@ -32,7 +32,7 @@ Know before you upgrade. Know what changed afterward. Know where to look when so
 
 My UNA Doctor gives UNA administrators an evidence-driven view of site health from inside Studio. It checks UNA/PHP compatibility, required PHP extensions, module declarations and dependencies, file integrity, database consistency, maintenance state, cron registrations, filesystem conditions and recent actionable logs.
 
-The current release includes Compatibility & Upgrade Intelligence. Doctor can check UNA's configured upgrade feed, recognize an already-staged official target package, verify its MD5 and structure, confirm target identity and inspect a limited set of literal compatibility requirements without executing target upgrade code.
+Version 0.6.5 adds reliably painted long-running activity feedback with rotating work phases and elapsed time. Reduced-motion mode uses a static indicator, and the Saved Module Reference Library supports an 80%–125% browser-local text-size preference. It retains Compatibility & Upgrade Intelligence, verified-reference safeguards and duplicate-action protection without enabling destructive reference repair.
 
 FEATURES
 --------

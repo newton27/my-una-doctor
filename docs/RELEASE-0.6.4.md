@@ -1,7 +1,7 @@
-# My UNA Doctor 0.6.4 — reconciliation candidate
+# My UNA Doctor 0.6.4 — historical reconciliation record
 
-Status: NOT RELEASED. PHP runtime validation and native install/update tests
-remain required. Candidate version is reserved here; no live metadata changes.
+Status: SUPERSEDED BY 0.6.5. This document preserves the 0.6.4 reconciliation
+history and is not the current release checkpoint.
 
 ## Sources
 
@@ -41,13 +41,13 @@ The GitHub v0.6.1 archive is recorded against b30c0b9 with SHA-256
 643deff170e80fd28c4282c7134d78246c2875983955940cf7267e570a13ce29.
 The server's independently produced 0.6.2 checkpoint references a different
 0.6.1 development line. Preserve both historical records; do not re-label or
-overwrite the old archive as this candidate. Later Marketplace/README changes
+overwrite the old archive with the reconciled source. Later Marketplace/README changes
 mean main is not byte-identical to the historical release source.
 
 ## Upgrade candidates and gates
 
-Build separate native 0.6.2-to-0.6.4 and 0.6.3-to-0.6.4 packages from this
-candidate commit. Templates follow UNA's native BxDolStudioUpdater contract:
+The reconciliation plan called for separate native 0.6.2-to-0.6.4 and
+0.6.3-to-0.6.4 packages. Templates follow UNA's native BxDolStudioUpdater contract:
 install/config.php + install/installer.php + source/ payload. No SQL execution,
 file deletion, checksum bypass, or custom database writes in update actions.
 UNA's normal updater changes version/track records after its checks succeed.
@@ -57,11 +57,11 @@ Do NOT enable forced updates or rewrite checksums to silence a mismatch.
 Native updates can refuse live hotfixes because their tracked hashes differ.
 Audit registered versions and tracked modifications; validate on a restored
 staging copy with verified file/database backup and rollback first.
-There is no certified 0.6.0/0.6.1 direct upgrade in this candidate.
+No certified 0.6.0/0.6.1 direct upgrade was established by this work.
 
 Required before merge/publish/deploy:
-1. Run scripts/validate-candidate.sh with server PHP 8.3.
-2. Fresh-install candidate on staging; confirm all four Doctor tables, options,
+1. Run the release validation with server PHP 8.3.
+2. Fresh-install the reconciled build on staging; confirm all four Doctor tables, options,
    Studio registration, scans, and uninstall symmetry in disposable staging only.
 3. Test native upgrades from genuine database-registered 0.6.2 and 0.6.3 states.
    Preserve scan history, repair journals, references and local knowledge.

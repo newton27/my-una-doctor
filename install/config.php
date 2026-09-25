@@ -14,13 +14,13 @@ $aConfig = array(
     'name' => 'my_una_doctor',
     'title' => 'My UNA Doctor',
     'note' => 'Studio-only UNA health diagnostics, integrity checks and scan history.',
-    'version' => '0.6.4',
+    'version' => '0.6.5',
     'vendor' => 'My UNA World',
     'help_url' => '',
 
     /*
      * UNA treats compatible_with as a minimum-version floor, not a wildcard
-     * allowlist. This first test build targets UNA 15 beginning with 15.0.0-A1.
+     * allowlist. This release targets UNA 15 beginning with 15.0.0-A1.
      */
     'compatible_with' => array(
         '15.0.0-A1',

@@ -4,6 +4,19 @@ All notable development milestones for My UNA Doctor are recorded here.
 
 The project follows a conservative safety model: **Diagnose first. Repair only when the evidence is clear.**
 
+## 0.6.5 — Activity Motion & Library Accessibility
+
+- Ensured supported forms and links paint the Doctor activity popup before submission or navigation.
+- Added rotating work phases and elapsed time for long-running actions.
+- Preserved duplicate-submit, duplicate-click and browser restoration protections.
+- Replaced continuous animation with a static indicator when reduced motion is requested.
+- Raised the Saved Reference Library minimum text scale from 50% to 80%.
+- Corrected stale source documentation for saved-reference comparison.
+- Preserved all repair barriers and reference-integrity checks.
+- Passed staged PHP validation, source-scope audit and browser workflow testing.
+
+See [0.6.5 release checkpoint](docs/RELEASE-0.6.5.md).
+
 ## 0.6.0 — Compatibility & Upgrade Intelligence
 
 - Added installed UNA/PHP compatibility detection from local UNA source.
