@@ -4,7 +4,7 @@ All notable development milestones for My UNA Doctor are recorded here.
 
 The project follows a conservative safety model: **Diagnose first. Repair only when the evidence is clear.**
 
-## Unreleased — UNA 15 installation retry safety
+## 0.6.6 — UNA 15 installation retry safety
 
 - Retained single-line installation SQL compatible with UNA's line concatenation parser (client report: v0.6.1 on MySQL/AWS RDS).
 - Guarded Studio page, management widget and home-page placement creation against duplicates on sequential installation retries.
@@ -12,7 +12,7 @@ The project follows a conservative safety model: **Diagnose first. Repair only w
 - Added parser regressions and disposable MySQL 8.0/MariaDB 10.11 tests for fresh install, repeat install, interruption after every statement and preservation of existing settings/scan data.
 - Added SQL checks to the candidate validator and corrected its stale 0.6.4 metadata expectation to match the current 0.6.5 source.
 
-These source changes do not replace previously published ZIPs or certify native Studio installation on AWS RDS.
+Includes a corrected full installer and direct file updaters for 0.6.1–0.6.5. Previous release assets remain unchanged. Native Studio and AWS RDS acceptance remain untested; see docs/RELEASE-0.6.6.md.
 
 ## 0.6.5 — Activity Motion & Library Accessibility
 
