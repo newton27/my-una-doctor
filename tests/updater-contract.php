@@ -89,6 +89,7 @@ verify($stage && is_dir($stage), 'Extracted updater archives are required');
 $site = sys_get_temp_dir() . '/doctor-updater-contract-' . bin2hex(random_bytes(8)) . '/';
 mkdir($site, 0777, true);
 define('BX_DIRECTORY_PATH_ROOT', $site);
+define('BX_DIRECTORY_PATH_MODULES', $site . 'modules/');
 try {
     for ($minor = 1; $minor <= 5; $minor++) {
         removeTree($site . 'modules');
