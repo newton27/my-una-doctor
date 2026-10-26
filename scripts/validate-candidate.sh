@@ -9,7 +9,7 @@ echo '============================================================'
 [[ -x $php_bin ]] || { echo "STOP: PHP unavailable: $php_bin"; exit 1; }
 echo
 echo '=== 1. ALL PHP FILES ==='
-while IFS= read -r -d '' file; do "$php_bin" -l "$file"; done < <(find classes install tests upgrade-templates -type f -name '*.php' -print0)
+while IFS= read -r -d '' file; do "$php_bin" -l "$file"; done < <(find classes install tests upgrade-templates request.php -type f -name '*.php' -print0)
 echo
 echo '=== 2. LOG CLASSIFICATION REGRESSIONS ==='
 "$php_bin" tests/log-classification.php

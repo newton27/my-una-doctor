@@ -14,6 +14,7 @@ PAYLOAD_FILES = (
     'CHANGELOG.md', 'INSTALLATION.txt', 'MARKETPLACE-DESCRIPTION.html',
     'MARKETPLACE.txt', 'README.md', 'cover.jpg', 'request.php',
     'docs/RELEASE-0.6.6.md', 'docs/INSTALL-SQL-COMPATIBILITY.md',
+    'docs/RELEASE-0.6.5.md',
     'docs/REPAIR-BARRIER-2.md', 'docs/RUNTIME-PROTECTION.md',
 )
 

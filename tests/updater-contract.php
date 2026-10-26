@@ -1,6 +1,7 @@
 <?php
 /** Official UNA updater class, isolated adapters: NOT a native Studio test. */
 define('BX_DOL', true);
+define('BX_DOL_MODULE_TYPE_MODULE', 'module');
 define('BX_DOL_STUDIO_INSTALLER_SUCCESS', 0);
 define('BX_DOL_STUDIO_INSTALLER_FAILED', 1);
 define('BX_FORCE_AUTOUPDATE_MAX_CHANGED_FILES_PERCENT', 0.05);
