@@ -1,0 +1,110 @@
+name: Validate and release My UNA Doctor 0.6.6
+on:
+  push:
+    branches: [main, fix/una15-install-sql]
+    paths:
+      - '.github/workflows/release-0.6.6.yml'
+      - 'scripts/build-release.py'
+      - 'tests/updater-contract.php'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  database:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['mysql:8.0', 'mariadb:10.11']
+    services:
+      database:
+        image: ${{ matrix.image }}
+        env:
+          MYSQL_ROOT_PASSWORD: regression-only
+          MYSQL_ROOT_HOST: '%'
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pregression-only"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyMySQL==1.1.2 cryptography
+      - name: Validate PHP, existing behavior, SQL, retry safety and package contracts
+        env:
+          DOCTOR_TEST_MYSQL: '1'
+          MYSQL_PASSWORD: regression-only
+        run: DOCTOR_PHP_BIN="$(command -v php)" bash scripts/validate-candidate.sh
+  package:
+    needs: database
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify language XML and release metadata
+        run: |
+          php -r 'if (simplexml_load_file("install/langs/en.xml") === false) exit(1);'
+          grep -F 'Version: **0.6.6**' README.md
+          grep -A1 -F 'Current package version:' MARKETPLACE.txt | grep -Fx '0.6.6'
+          ! grep -iE '0\.6\.4 CANDIDATE|validation pending' INSTALLATION.txt
+      - name: Build and verify full package and five direct updaters
+        run: |
+          python3 scripts/build-release.py --output dist
+          (cd dist && sha256sum -c SHA256SUMS)
+          python3 - <<'PY'
+          import os, pathlib, zipfile
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'doctor-update-fixtures'
+          root.mkdir()
+          for archive in pathlib.Path('dist').glob('*-to-0.6.6.zip'):
+              with zipfile.ZipFile(archive) as package:
+                  package.extractall(root)
+          PY
+      - name: Exercise official UNA updater class against each archive
+        env:
+          DOCTOR_UNA_UPDATER: ${{ runner.temp }}/BxDolStudioUpdater.php
+          DOCTOR_UPDATE_FIXTURES: ${{ runner.temp }}/doctor-update-fixtures
+        run: |
+          curl --fail --location --silent --show-error \
+            https://raw.githubusercontent.com/unacms/UNA/8f45e86cf7bcdffb9096aba05c12c2f14a71c209/studio/classes/BxDolStudioUpdater.php \
+            -o "$DOCTOR_UNA_UPDATER"
+          php tests/updater-contract.php
+      - name: Record exact build checkpoint
+        run: |
+          cp docs/RELEASE-0.6.6.md dist/RELEASE-NOTES.md
+          printf '\nSource commit: `%s`\n' "$GITHUB_SHA" >> dist/RELEASE-NOTES.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: my-una-doctor-0.6.6-verified
+          path: dist/
+          if-no-files-found: error
+  publish:
+    needs: package
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: my-una-doctor-0.6.6-verified
+          path: dist
+      - name: Publish authorized new maintenance release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum -c SHA256SUMS)
+          if gh release view v0.6.6 >/dev/null 2>&1; then
+            echo 'Refusing to replace an existing v0.6.6 release.'
+            exit 1
+          fi
+          gh release create v0.6.6 --target "$GITHUB_SHA" \
+            --title 'My UNA Doctor 0.6.6 — UNA 15 installation compatibility' \
+            --notes-file dist/RELEASE-NOTES.md \
+            dist/*.zip dist/SHA256SUMS dist/RELEASE-EVIDENCE.json
+          gh release download v0.6.6 --dir downloaded
+          (cd downloaded && sha256sum -c SHA256SUMS)
+          cmp dist/RELEASE-EVIDENCE.json downloaded/RELEASE-EVIDENCE.json
+          test "$(gh api repos/$GH_REPO/git/ref/tags/v0.6.6 --jq '.object.sha')" = "$GITHUB_SHA"
