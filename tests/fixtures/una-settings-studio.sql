@@ -1,0 +1,10 @@
+-- Minimal UNA settings/Studio schema fixture; not a native UNA installation.
+CREATE TABLE sys_options_types (id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `group` VARCHAR(64) NOT NULL, name VARCHAR(64) NOT NULL UNIQUE, caption VARCHAR(255) NOT NULL, icon VARCHAR(255) NOT NULL, `order` INT NOT NULL) ENGINE=InnoDB;
+CREATE TABLE sys_options_categories (id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, type_id INT UNSIGNED NOT NULL, name VARCHAR(64) NOT NULL UNIQUE, caption VARCHAR(255) NOT NULL, hidden INT NOT NULL, `order` INT NOT NULL) ENGINE=InnoDB;
+CREATE TABLE sys_options (id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, category_id INT UNSIGNED NOT NULL, name VARCHAR(128) NOT NULL UNIQUE, caption VARCHAR(255) NOT NULL, info TEXT NOT NULL, value TEXT NOT NULL, type VARCHAR(32) NOT NULL, extra TEXT NOT NULL, `check` TEXT NOT NULL, check_params TEXT NOT NULL, check_error TEXT NOT NULL, `order` INT NOT NULL) ENGINE=InnoDB;
+CREATE TABLE sys_std_pages (id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `index` INT NOT NULL, name VARCHAR(64) NOT NULL UNIQUE, header VARCHAR(255) NOT NULL, caption VARCHAR(255) NOT NULL, icon VARCHAR(255) NOT NULL) ENGINE=InnoDB;
+CREATE TABLE sys_std_widgets (id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, page_id INT UNSIGNED NOT NULL, module VARCHAR(64) NOT NULL, type VARCHAR(32) NOT NULL, url TEXT NOT NULL, click TEXT NOT NULL, icon VARCHAR(255) NOT NULL, caption VARCHAR(255) NOT NULL, cnt_notices TEXT NOT NULL, cnt_actions TEXT NOT NULL) ENGINE=InnoDB;
+CREATE TABLE sys_std_pages_widgets (page_id INT UNSIGNED NOT NULL, widget_id INT UNSIGNED NOT NULL, `order` INT NOT NULL, PRIMARY KEY(page_id, widget_id)) ENGINE=InnoDB;
+INSERT INTO sys_std_pages VALUES (1, 0, 'home', 'Home', 'Home', '');
+INSERT INTO sys_std_widgets VALUES (10, 1, 'unrelated', 'manage', 'unrelated', '', '', '', '', '');
+INSERT INTO sys_std_pages_widgets VALUES (1, 10, 7);

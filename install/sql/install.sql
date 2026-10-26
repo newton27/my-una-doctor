@@ -48,17 +48,17 @@ INSERT INTO `sys_options`     (         `category_id`,         `name`,         `
 INSERT INTO `sys_options` (     `category_id`,`name`,`caption`,`info`,`value`,     `type`,`extra`,`check`,`check_params`,`check_error`,`order` ) SELECT     @iDoctorOptionsCategoryId,     'my_una_doctor_use_maintenance_page',     '_my_una_doctor_opt_use_maintenance_page',     '_my_una_doctor_opt_use_maintenance_page_info',     'on',     'checkbox',     '',     '',     '',     '',     11 WHERE NOT EXISTS (     SELECT 1     FROM `sys_options`     WHERE `name` = 'my_una_doctor_use_maintenance_page' );
 
 -- STUDIO PAGE & WIDGET
+-- Resolve IDs explicitly: LAST_INSERT_ID() can retain an unrelated ID on retry.
 
-INSERT INTO `sys_std_pages`(`index`, `name`, `header`, `caption`, `icon`) VALUES (3, @sName, '_my_una_doctor', '_my_una_doctor', CONCAT(@sName, '@modules/', @sPath, '|std-icon.svg'));
-SET @iPageId = LAST_INSERT_ID();
+INSERT INTO `sys_std_pages`(`index`, `name`, `header`, `caption`, `icon`) SELECT 3, @sName, '_my_una_doctor', '_my_una_doctor', CONCAT(@sName, '@modules/', @sPath, '|std-icon.svg') WHERE NOT EXISTS (SELECT 1 FROM `sys_std_pages` WHERE `name` = @sName);
+SET @iPageId = (SELECT `id` FROM `sys_std_pages` WHERE `name` = @sName LIMIT 1);
 
 SET @iParentPageId = (SELECT `id` FROM `sys_std_pages` WHERE `name` = 'home');
 SET @iParentPageOrder = (SELECT MAX(`order`) FROM `sys_std_pages_widgets` WHERE `page_id` = @iParentPageId);
-INSERT INTO `sys_std_widgets` (`page_id`, `module`, `type`, `url`, `click`, `icon`, `caption`, `cnt_notices`, `cnt_actions`) VALUES (@iPageId, @sName, 'manage', CONCAT('{url_studio}module.php?name=', @sName), '', CONCAT(@sName, '@modules/', @sPath, '|std-icon.svg'), '_my_una_doctor', '', 'a:4:{s:6:"module";s:6:"system";s:6:"method";s:11:"get_actions";s:6:"params";a:0:{}s:5:"class";s:18:"TemplStudioModules";}');
-INSERT INTO `sys_std_pages_widgets` (`page_id`, `widget_id`, `order`) VALUES (@iParentPageId, LAST_INSERT_ID(), IF(ISNULL(@iParentPageOrder), 1, @iParentPageOrder + 1));
+INSERT INTO `sys_std_widgets` (`page_id`, `module`, `type`, `url`, `click`, `icon`, `caption`, `cnt_notices`, `cnt_actions`) SELECT @iPageId, @sName, 'manage', CONCAT('{url_studio}module.php?name=', @sName), '', CONCAT(@sName, '@modules/', @sPath, '|std-icon.svg'), '_my_una_doctor', '', 'a:4:{s:6:"module";s:6:"system";s:6:"method";s:11:"get_actions";s:6:"params";a:0:{}s:5:"class";s:18:"TemplStudioModules";}' WHERE NOT EXISTS (SELECT 1 FROM `sys_std_widgets` WHERE `page_id` = @iPageId AND `module` = @sName AND `type` = 'manage');
+SET @iWidgetId = (SELECT `id` FROM `sys_std_widgets` WHERE `page_id` = @iPageId AND `module` = @sName AND `type` = 'manage' ORDER BY `id` LIMIT 1);
+INSERT INTO `sys_std_pages_widgets` (`page_id`, `widget_id`, `order`) SELECT @iParentPageId, @iWidgetId, IF(ISNULL(@iParentPageOrder), 1, @iParentPageOrder + 1) WHERE NOT EXISTS (SELECT 1 FROM `sys_std_pages_widgets` WHERE `page_id` = @iParentPageId AND `widget_id` = @iWidgetId);
 
 -- Persistent Module Reference Library.
 -- Reference ZIPs are stored separately under protected Doctor-owned storage.
 CREATE TABLE IF NOT EXISTS `my_una_doctor_reference_library` (     `id` int(10) unsigned NOT NULL AUTO_INCREMENT,     `module_name` varchar(64) NOT NULL,     `module_title` varchar(255) NOT NULL DEFAULT '',     `vendor` varchar(255) NOT NULL DEFAULT '',     `reference_version` varchar(64) NOT NULL DEFAULT '',     `original_filename` varchar(255) NOT NULL DEFAULT '',     `reference_sha256` char(64) NOT NULL,     `storage_relpath` varchar(255) NOT NULL,     `archive_files` int(10) unsigned NOT NULL DEFAULT 0,     `archive_bytes` bigint(20) unsigned NOT NULL DEFAULT 0,     `reference_files` int(10) unsigned NOT NULL DEFAULT 0,     `first_session_id` varchar(64) NOT NULL,     `latest_session_id` varchar(64) NOT NULL,     `comparison_count` int(10) unsigned NOT NULL DEFAULT 1,     `first_seen_utc` datetime DEFAULT NULL,     `last_seen_utc` datetime DEFAULT NULL,     `baseline_authenticity` varchar(32) NOT NULL DEFAULT '',     `integrity_status` varchar(32) NOT NULL DEFAULT 'verified',     `created_at` int(10) unsigned NOT NULL DEFAULT 0,     `updated_at` int(10) unsigned NOT NULL DEFAULT 0,     PRIMARY KEY (`id`),     UNIQUE KEY `reference_sha256` (`reference_sha256`),     KEY `module_version` (`module_name`, `reference_version`),     KEY `latest_session` (`latest_session_id`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-

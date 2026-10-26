@@ -3,7 +3,7 @@ set -euo pipefail
 cd -- "$(dirname -- "$0")/.."
 php_bin=${DOCTOR_PHP_BIN:-/bin/php8.3}
 echo '============================================================'
-echo ' MY UNA DOCTOR — 0.6.4 CANDIDATE VALIDATION'
+echo ' MY UNA DOCTOR — SOURCE VALIDATION'
 echo ' OFFLINE / NO UNA BOOTSTRAP / NO INSTALL / NO DATABASE'
 echo '============================================================'
 [[ -x $php_bin ]] || { echo "STOP: PHP unavailable: $php_bin"; exit 1; }
@@ -14,8 +14,10 @@ echo
 echo '=== 2. LOG CLASSIFICATION REGRESSIONS ==='
 "$php_bin" tests/log-classification.php
 echo
-echo '=== 3. MODULE METADATA ==='
-"$php_bin" -r 'define("BX_DOL_MODULE_TYPE_MODULE", "module"); require "install/config.php"; if ($aConfig["version"] !== "0.6.4" || $aConfig["vendor"] !== "My UNA World" || $aConfig["name"] !== "my_una_doctor") exit(1); echo "PASS: My UNA Doctor 0.6.4 / My UNA World\n";'
+echo '=== 3. INSTALLATION SQL REGRESSIONS ==='
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+echo '=== 4. MODULE METADATA ==='
+"$php_bin" -r 'define("BX_DOL_MODULE_TYPE_MODULE", "module"); require "install/config.php"; if ($aConfig["version"] !== "0.6.5" || $aConfig["vendor"] !== "My UNA World" || $aConfig["name"] !== "my_una_doctor") exit(1); echo "PASS: My UNA Doctor 0.6.5 / My UNA World\n";'
 echo '============================================================'
 echo ' OFFLINE VALIDATION PASSED — STAGING UPGRADE STILL REQUIRED'
 echo '============================================================'
