@@ -22,9 +22,7 @@ $aConfig = array(
      * UNA treats compatible_with as a minimum-version floor, not a wildcard
      * allowlist. This release targets UNA 15 beginning with 15.0.0-A1.
      */
-    'compatible_with' => array(
-        '15.0.0-A1',
-    ),
+    'compatible_with' => ['15.0.x'],
 
     /* ZIP/module layout: modules/newton/my_una_doctor/ */
     'home_dir' => 'newton/my_una_doctor/',
