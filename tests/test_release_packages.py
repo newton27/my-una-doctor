@@ -30,23 +30,26 @@ class ReleasePackageTests(unittest.TestCase):
             out = Path(temporary) / 'dist'
             builder.build(root, out, 'a' * 40)
             archives = sorted(out.glob('*.zip'))
-            self.assertEqual(len(archives), 6)
-            with zipfile.ZipFile(out / 'my-una-doctor-0.6.6.zip') as archive:
+            self.assertEqual(len(archives), len(builder.PREVIOUS_VERSIONS) + 1)
+            with zipfile.ZipFile(out / f'my-una-doctor-{builder.VERSION}.zip') as archive:
                 self.assertIn('my_una_doctor/install/sql/install.sql', archive.namelist())
                 self.assertIn('my_una_doctor/template/images/icons/std-icon.svg', archive.namelist())
                 self.assertFalse(any('/updates/' in p or '/tests/' in p for p in archive.namelist()))
             for previous in builder.PREVIOUS_VERSIONS:
-                prefix = f'update_{previous}_0.6.6/'
-                with zipfile.ZipFile(out / f'my-una-doctor-{previous}-to-0.6.6.zip') as archive:
+                prefix = f'update_{previous}_{builder.VERSION}/'
+                with zipfile.ZipFile(out / f'my-una-doctor-{previous}-to-{builder.VERSION}.zip') as archive:
                     config = archive.read(prefix + 'install/config.php').decode()
                     self.assertIn(f"'version_from' => '{previous}'", config)
-                    self.assertIn("'version_to' => '0.6.6'", config)
+                    self.assertIn(f"'version_to' => '{builder.VERSION}'", config)
+                    self.assertIn("'compatible_with' => ['15.0.x']", config)
+                    self.assertIn(b"'15.0.x'", archive.read(prefix + 'source/install/config.php'))
                     self.assertNotIn('execute_sql', config)
                     self.assertEqual(archive.read(prefix + 'source/install/sql/install.sql'),
                                      (ROOT / 'install/sql/install.sql').read_bytes())
                     self.assertFalse(any(p.startswith(prefix + 'install/sql/') for p in archive.namelist()))
-            self.assertEqual(len((out / 'SHA256SUMS').read_text().splitlines()), 6)
+            self.assertEqual(len((out / 'SHA256SUMS').read_text().splitlines()), len(builder.PREVIOUS_VERSIONS) + 1)
 
 
 if __name__ == '__main__':
     unittest.main()
+

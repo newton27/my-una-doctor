@@ -91,10 +91,10 @@ mkdir($site, 0777, true);
 define('BX_DIRECTORY_PATH_ROOT', $site);
 define('BX_DIRECTORY_PATH_MODULES', $site . 'modules/');
 try {
-    for ($minor = 1; $minor <= 5; $minor++) {
+    for ($minor = 1; $minor <= 6; $minor++) {
         removeTree($site . 'modules');
         $previous = '0.6.' . $minor;
-        $wrapper = 'update_' . $previous . '_0.6.6';
+        $wrapper = 'update_' . $previous . '_0.6.7';
         $module = $site . 'modules/newton/my_una_doctor/';
         mkdir($module . 'updates/' . $wrapper, 0777, true);
         $fileManager = new DoctorUpdaterFileAdapter();
@@ -119,7 +119,7 @@ try {
         $updater = new MyUnaDoctorUpdater($aConfig);
         $result = $updater->update(array('module_name' => 'my_una_doctor'));
         verify($result['result'], 'Update failed for ' . $previous);
-        verify($db->module['version'] === '0.6.6' && $db->module['enabled'] === 1, 'Version/enabled state mismatch');
+        verify($db->module['version'] === '0.6.7' && $db->module['enabled'] === 1, 'Version/enabled state mismatch');
         verify($db->saved === $saved, 'Saved data changed');
         verify(file_get_contents($module . 'client-local-data.txt') === 'preserve-client-data', 'Client file removed');
         verify($updater->actions === array('update_files', 'clear_db_cache', 'clear_template_cache'), 'Unsafe action list');
@@ -131,8 +131,9 @@ try {
         }
         $result = $updater->update(array('module_name' => 'my_una_doctor'));
         verify(!$result['result'] && $result['code'] === BX_DOL_STUDIO_IU_RCE_WMV, 'Repeated updater must be rejected by version gate');
-        echo 'PASS: official updater contract ' . $previous . ' -> 0.6.6; wrong-version and modified-source guards, file identity, saved state and cleanup.' . PHP_EOL;
+        echo 'PASS: official updater contract ' . $previous . ' -> 0.6.7; wrong-version and modified-source guards, file identity, saved state and cleanup.' . PHP_EOL;
     }
 } finally {
     removeTree($site);
 }
+

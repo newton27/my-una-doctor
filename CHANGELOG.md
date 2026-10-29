@@ -4,6 +4,13 @@ All notable development milestones for My UNA Doctor are recorded here.
 
 The project follows a conservative safety model: **Diagnose first. Repair only when the evidence is clear.**
 
+## 0.6.7 — UNA compatibility metadata (unpublished candidate)
+
+- Standardized installer and generated updater manifests on `15.0.x`.
+- Added a native file updater for already-installed 0.6.6; retained direct paths from 0.6.1–0.6.5.
+- Added package compatibility regression checks. No UNA core edits, version-gate bypasses, or published release changes.
+- Native Studio fresh-install and update acceptance remain pending.
+
 ## 0.6.6 — UNA 15 installation retry safety
 
 - Retained single-line installation SQL compatible with UNA's line concatenation parser (client report: v0.6.1 on MySQL/AWS RDS).

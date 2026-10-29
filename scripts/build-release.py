@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build immutable 0.6.6 installation and version-specific UNA updater archives."""
+"""Build unpublished 0.6.7 installation and version-specific UNA updater archives."""
 import argparse
 import hashlib
 import json
@@ -8,12 +8,12 @@ import re
 import subprocess
 import zipfile
 
-VERSION = '0.6.6'
-PREVIOUS_VERSIONS = tuple(f'0.6.{n}' for n in range(1, 6))
+VERSION = '0.6.7'
+PREVIOUS_VERSIONS = tuple(f'0.6.{n}' for n in range(1, 7))
 PAYLOAD_FILES = (
     'CHANGELOG.md', 'INSTALLATION.txt', 'MARKETPLACE-DESCRIPTION.html',
     'MARKETPLACE.txt', 'README.md', 'cover.jpg', 'request.php',
-    'docs/RELEASE-0.6.6.md', 'docs/INSTALL-SQL-COMPATIBILITY.md',
+    'docs/RELEASE-0.6.7.md', 'docs/RELEASE-0.6.6.md', 'docs/INSTALL-SQL-COMPATIBILITY.md',
     'docs/RELEASE-0.6.5.md',
     'docs/REPAIR-BARRIER-2.md', 'docs/RUNTIME-PROTECTION.md',
 )
@@ -26,7 +26,7 @@ $aConfig = array(
     'version_from' => '{previous}',
     'version_to' => '{VERSION}',
     'vendor' => 'My UNA World',
-    'compatible_with' => array('15.0.0-A1'),
+    'compatible_with' => ['15.0.x'],
     'home_dir' => 'newton/my_una_doctor/updates/update_{previous}_{VERSION}/',
     'home_uri' => 'my_una_doctor_update_{previous.replace('.', '')}_{VERSION.replace('.', '')}',
     'module_dir' => 'newton/my_una_doctor/',
@@ -111,3 +111,4 @@ if __name__ == '__main__':
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
     assets = build(root, args.output.resolve(), commit)
     print(json.dumps({'source_commit': commit, 'assets': assets}, indent=2))
+
