@@ -3,7 +3,7 @@ on:
   push:
     branches: [fix/una15-compatibility-067]
     paths:
-      - '.github/workflows/release-0.6.7.yml'
+      - '.github/workflows/release-0.6.6.yml'
       - 'scripts/build-release.py'
       - 'tests/updater-contract.php'
   pull_request:
