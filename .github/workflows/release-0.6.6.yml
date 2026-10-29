@@ -79,7 +79,7 @@ jobs:
       - name: Record exact build checkpoint
         run: |
           cp docs/RELEASE-0.6.7.md dist/RELEASE-NOTES.md
-          printf '\nSource commit: `%s`\n' "$GITHUB_SHA" >> dist/RELEASE-NOTES.md
+          printf '\nSource commit: `%s`\n' "$(git rev-parse HEAD)" >> dist/RELEASE-NOTES.md
       - uses: actions/upload-artifact@v4
         with:
           name: my-una-doctor-0.6.7-verified
