@@ -38,3 +38,5 @@ jobs:
         run: |
           find classes install tests upgrade-templates -type f -name '*.php' -print0 | xargs -0 -n1 php -l
           php tests/log-classification.php
+          php tests/module-version-provenance.php
+          php tests/module-version-provenance.php --missing-core-version

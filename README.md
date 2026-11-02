@@ -2,12 +2,16 @@
 
 **Health, Compatibility & Upgrade Readiness for UNA**
 
-Version: **0.6.6**  
+Version: **0.6.7**  
 Vendor: **My UNA World**
 
 > Know before you upgrade. Know what changed afterward. Know where to look when something goes wrong.
 
 My UNA Doctor is a Studio-only UNA CMS diagnostic and guarded-repair module. It evaluates application health, module integrity, maintenance and upgrade state, PHP compatibility, database consistency, cron registrations, filesystem conditions, recent actionable logs and protected repair state.
+
+## What's new in 0.6.7 (unpublished candidate)
+
+Uses UNA's `15.0.x` compatibility declaration in both the full installer and generated updater manifests. Includes direct file updaters from 0.6.1–0.6.6. Native Studio acceptance is pending; see [release notes](docs/RELEASE-0.6.7.md). Published 0.6.6 assets remain unchanged.
 
 ## What's new in 0.6.6
 
