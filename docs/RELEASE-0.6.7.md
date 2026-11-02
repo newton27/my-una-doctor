@@ -2,6 +2,10 @@
 
 Unpublished candidate. No release/tag/asset or Marketplace changes are authorized by this document.
 
+The candidate also recognizes UNA System's exact `BX_DOL_VERSION` metadata value when checking package provenance. A matching RC3 System record is verified against the loaded core version; a different registered version remains a mismatch. No version is hardcoded, inferred from the database, or rewritten, and package PHP is not executed. Unsupported expressions and unavailable constants remain unverified.
+
+This runtime correction changes the candidate source and package hashes. Earlier native acceptance records remain historical evidence for their recorded checkpoints; a new native RC3 scan and final source/package verification are still required before certifying the changed candidate.
+
 The full installer and all six generated updater manifests use `['15.0.x']`, matching official UNA 15 module metadata. Direct native updater packages cover 0.6.1 through 0.6.6. The updater remains file-only: no installation SQL is executed and native version/hash protections remain in place.
 
 The six published 0.6.6 ZIPs were independently inspected using the workflow artifact from run 40347487801, source 71e4f46ed5eb1f775ae7804ef8c4b95515088c67. Each inner ZIP hash matched its published release asset digest. All six passed ZIP integrity checks. The installer, every updater payload installer and every updater manifest declare 15.0.0-A1. The published assets and tag are preserved.

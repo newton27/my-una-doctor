@@ -3283,7 +3283,7 @@ class MyUnaDoctorScanner
         ));
     }
 
-    protected function extractModulePackageVersion($sConfigPath)
+    protected function extractModulePackageVersion($sConfigPath, $bSystemModule = false)
     {
         /*
          * Read package identity without executing another module's
@@ -3324,6 +3324,89 @@ class MyUnaDoctorScanner
                     'status' => 'parsed',
                     'version' => trim((string)$aMatch[1]),
                 );
+            }
+        }
+
+        /*
+         * UNA's own System manifest uses BX_DOL_VERSION rather than a
+         * quoted version. Resolve that one known value only for System,
+         * without including/evaluating the package config or borrowing
+         * the database version. Token boundaries reject computed values
+         * and constant-looking text inside another string.
+         */
+        if (
+            $bSystemModule
+            && defined('BX_DOL_VERSION')
+            && trim((string)BX_DOL_VERSION) !== ''
+            && function_exists('token_get_all')
+        ) {
+            $aTokens = array();
+            foreach (token_get_all($sText) as $aToken) {
+                if (!is_array($aToken) || $aToken[0] !== T_WHITESPACE)
+                    $aTokens[] = $aToken;
+            }
+
+            // Bind recognition to one literal $aConfig assignment. Other
+            // arrays, nested metadata and later overrides cannot supply it.
+            $aConfigReferences = array();
+            foreach ($aTokens as $i => $aToken) {
+                if (is_array($aToken) && $aToken[0] === T_VARIABLE && $aToken[1] === '$aConfig')
+                    $aConfigReferences[] = $i;
+            }
+
+            if (count($aConfigReferences) === 1) {
+                $iConfig = $aConfigReferences[0];
+                $iOpen = $iConfig + 2;
+                $bLiteralArray = ($aTokens[$iOpen] ?? null) === '[';
+                if (
+                    is_array($aTokens[$iOpen] ?? null)
+                    && $aTokens[$iOpen][0] === T_ARRAY
+                    && ($aTokens[$iOpen + 1] ?? null) === '('
+                ) {
+                    $iOpen++;
+                    $bLiteralArray = true;
+                }
+
+                if (($aTokens[$iConfig + 1] ?? null) === '=' && $bLiteralArray) {
+                    $iDepth = 1;
+                    $bVersionSeen = false;
+                    $sResolvedVersion = '';
+                    for ($i = $iOpen + 1; $i < count($aTokens) && $iDepth > 0; $i++) {
+                        $aToken = $aTokens[$i];
+                        if (
+                            $iDepth === 1
+                            && is_array($aToken)
+                            && $aToken[0] === T_CONSTANT_ENCAPSED_STRING
+                            && in_array(strtolower($aToken[1]), array("'version'", '"version"'), true)
+                            && is_array($aTokens[$i + 1] ?? null)
+                            && $aTokens[$i + 1][0] === T_DOUBLE_ARROW
+                        ) {
+                            if ($bVersionSeen)
+                                break;
+                            $bVersionSeen = true;
+                            if (
+                                !is_array($aTokens[$i + 2] ?? null)
+                                || $aTokens[$i + 2][0] !== T_STRING
+                                || $aTokens[$i + 2][1] !== 'BX_DOL_VERSION'
+                                || !in_array($aTokens[$i + 3] ?? null, array(',', ']', ')'), true)
+                            )
+                                break;
+                            $sResolvedVersion = trim((string)BX_DOL_VERSION);
+                        }
+
+                        if (in_array($aToken, array('[', '(', '{'), true))
+                            $iDepth++;
+                        elseif (in_array($aToken, array(']', ')', '}'), true))
+                            $iDepth--;
+                    }
+
+                    if ($iDepth === 0 && $sResolvedVersion !== '') {
+                        return array(
+                            'status' => 'parsed',
+                            'version' => $sResolvedVersion,
+                        );
+                    }
+                }
             }
         }
 
@@ -3429,7 +3512,8 @@ class MyUnaDoctorScanner
              */
             $aPackage =
                 $this->extractModulePackageVersion(
-                    $sConfig
+                    $sConfig,
+                    (string)$aModule['name'] === 'system'
                 );
 
             if (

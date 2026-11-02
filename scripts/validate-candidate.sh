@@ -13,6 +13,9 @@ while IFS= read -r -d '' file; do "$php_bin" -l "$file"; done < <(find classes i
 echo
 echo '=== 2. LOG CLASSIFICATION REGRESSIONS ==='
 "$php_bin" tests/log-classification.php
+echo '=== 2b. MODULE AND SYSTEM VERSION PROVENANCE ==='
+"$php_bin" tests/module-version-provenance.php
+"$php_bin" tests/module-version-provenance.php --missing-core-version
 echo
 echo '=== 3. INSTALLATION SQL REGRESSIONS ==='
 python3 -m unittest discover -s tests -p 'test_*.py' -v
