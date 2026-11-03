@@ -1,6 +1,9 @@
 """Release archive contracts; no site installation or database access."""
 import importlib.util
 import sqlite3
+import os
+import shutil
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -61,6 +64,11 @@ class ReleasePackageTests(unittest.TestCase):
                                          [('* * * * *', 'MyUnaDoctorCron', 'modules/newton/my_una_doctor/classes/MyUnaDoctorCron.php')])
                         self.assertEqual(db.execute('SELECT COUNT(*) FROM sys_cron_jobs').fetchone()[0], 2)
             self.assertEqual(len((out / 'SHA256SUMS').read_text().splitlines()), len(builder.PREVIOUS_VERSIONS) + 1)
+            php = os.environ.get('DOCTOR_PHP_BIN') or shutil.which('php')
+            if php:
+                result = subprocess.run([php, str(ROOT / 'tests/archive-roots.php'),
+                                         *map(str, archives)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == '__main__':

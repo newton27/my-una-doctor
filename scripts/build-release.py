@@ -41,16 +41,30 @@ $aConfig = array(
 
 
 def write_zip(path, files):
+    roots = {name.split('/', 1)[0] + '/' for name in files}
+    if len(roots) != 1:
+        raise ValueError('A native UNA archive requires exactly one package root')
+    root = roots.pop()
     with zipfile.ZipFile(path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        # UNA derives the module/update directory from getNameIndex(0).
+        # An implicit root is insufficient even when every file has its prefix.
+        info = zipfile.ZipInfo(root, date_time=(2026, 10, 26, 0, 0, 0))
+        info.create_system = 3
+        info.compress_type = zipfile.ZIP_STORED
+        info.external_attr = (0o40755 << 16) | 0x10
+        archive.writestr(info, b'')
         for name, content in sorted(files.items()):
             info = zipfile.ZipInfo(name, date_time=(2026, 10, 26, 0, 0, 0))
+            info.create_system = 3
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o100644 << 16
             archive.writestr(info, content)
     with zipfile.ZipFile(path) as archive:
         if archive.testzip() is not None:
             raise ValueError(f'Corrupt archive: {path}')
-        if set(archive.namelist()) != set(files):
+        if archive.namelist()[0] != root or not archive.infolist()[0].is_dir():
+            raise ValueError(f'Missing explicit first root directory: {path}')
+        if set(archive.namelist()) != set(files) | {root}:
             raise ValueError(f'Inventory mismatch: {path}')
         for name, content in files.items():
             if archive.read(name) != content:
