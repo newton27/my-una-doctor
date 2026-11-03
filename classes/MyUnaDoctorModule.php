@@ -9,11 +9,38 @@ class MyUnaDoctorModule extends BxDolModule
 
     public function runHealthScan()
     {
-        require_once(BX_DIRECTORY_PATH_MODULES . $this->_aModule['path'] . 'classes/MyUnaDoctorScanner.php');
-        $oScanner = new MyUnaDoctorScanner($this);
-        $aScan = $oScanner->run();
-        $this->_oDb->addScan($aScan);
-        return $aScan;
+        $sClasses = BX_DIRECTORY_PATH_MODULES . $this->_aModule['path'] . 'classes/';
+        if (!class_exists('MyUnaMaintenanceLease', false))
+            require_once($sClasses . 'MyUnaMaintenanceLease.php');
+
+        $iPageOption = (int)$this->_oDb->getOne(
+            'SELECT COUNT(*) FROM `sys_options` WHERE `name` = ?',
+            array('my_una_doctor_use_maintenance_page')
+        );
+        $sMaintenanceHtml = null;
+        if ($iPageOption === 0 || (string)getParam('my_una_doctor_use_maintenance_page') === 'on') {
+            require_once($sClasses . 'MyUnaDoctorMaintenance.php');
+            $iStarted = time();
+            $sMaintenanceHtml = MyUnaDoctorMaintenance::buildPage($iStarted, $iStarted + 15 * 60);
+        }
+
+        $oMaintenance = new MyUnaMaintenanceLease(BX_DIRECTORY_PATH_ROOT);
+        $aMaintenance = $oMaintenance->begin($sMaintenanceHtml);
+        $oFailure = null;
+        try {
+            require_once($sClasses . 'MyUnaDoctorScanner.php');
+            $oScanner = new MyUnaDoctorScanner($this, $aMaintenance['original']);
+            $aScan = $oScanner->run();
+            $this->_oDb->addScan($aScan);
+            return $aScan;
+        } catch (Throwable $oError) {
+            $oFailure = $oError;
+            throw $oError;
+        } finally {
+            $aRestore = $oMaintenance->finish();
+            if (!$aRestore['ok'])
+                throw new RuntimeException('Health scan maintenance could not be restored: ' . implode('; ', $aRestore['errors']), 0, $oFailure);
+        }
     }
 
 

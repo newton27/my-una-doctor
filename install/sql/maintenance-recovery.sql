@@ -1,0 +1,1 @@
+INSERT INTO `sys_cron_jobs` (`name`, `time`, `class`, `file`, `service_call`) SELECT 'my_una_doctor_maintenance_recovery', '* * * * *', 'MyUnaDoctorCron', 'modules/newton/my_una_doctor/classes/MyUnaDoctorCron.php', '' WHERE NOT EXISTS (SELECT 1 FROM `sys_cron_jobs` WHERE `name` = 'my_una_doctor_maintenance_recovery');

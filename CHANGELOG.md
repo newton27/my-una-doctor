@@ -4,6 +4,19 @@ All notable development milestones for My UNA Doctor are recorded here.
 
 The project follows a conservative safety model: **Diagnose first. Repair only when the evidence is clear.**
 
+## 0.6.8 — native scan maintenance
+
+- Full scans now activate UNA soft maintenance for actual scanner/history work and restore original options after success, failure and shutdown. Existing administrator maintenance and page/display settings are preserved.
+- Added a shared private lease, atomic conditional option writes, durable recovery evidence and every-minute standalone Doctor recovery cron. Overlapping Doctor/World operations cannot take each other's maintenance.
+- Added new full/native direct updater packages from 0.6.1–0.6.7; only recovery-cron registration SQL runs during update. Previous packages and releases remain unchanged.
+
+## 0.6.7 — UNA compatibility metadata (unpublished candidate)
+
+- Standardized installer and generated updater manifests on `15.0.x`.
+- Added a native file updater for already-installed 0.6.6; retained direct paths from 0.6.1–0.6.5.
+- Added package compatibility regression checks. No UNA core edits, version-gate bypasses, or published release changes.
+- Native Studio fresh-install and update acceptance remain pending.
+
 ## 0.6.6 — UNA 15 installation retry safety
 
 - Retained single-line installation SQL compatible with UNA's line concatenation parser (client report: v0.6.1 on MySQL/AWS RDS).
