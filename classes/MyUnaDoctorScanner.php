@@ -9,11 +9,22 @@ class MyUnaDoctorScanner
     protected $aTableFieldsCache = array();
     protected $aModuleBackupFiles = array();
     protected $aRuntimeContentCandidates = array();
+    protected $aScanMaintenanceOriginal = array();
 
-    public function __construct($oModule)
+    public function __construct($oModule, array $aMaintenanceOriginal = array())
     {
         $this->oModule = $oModule;
         $this->oDb = BxDolDb::getInstance();
+        $this->aScanMaintenanceOriginal = $aMaintenanceOriginal;
+    }
+
+    protected function getDiagnosticMaintenanceParam($sName)
+    {
+        // Diagnose the state that existed before this scan's temporary public
+        // barrier; otherwise every healthy scan would flag its own maintenance.
+        return array_key_exists($sName, $this->aScanMaintenanceOriginal)
+            ? $this->aScanMaintenanceOriginal[$sName]
+            : getParam($sName);
     }
 
     public function run()
@@ -2258,7 +2269,7 @@ class MyUnaDoctorScanner
             && $iHardAge >= $iStaleThreshold;
 
         $sSoftValue =
-            (string)getParam(
+            (string)$this->getDiagnosticMaintenanceParam(
                 'sys_maintenance_mode'
             );
 
@@ -2266,7 +2277,7 @@ class MyUnaDoctorScanner
             !empty($sSoftValue);
 
         $sSoftHtml =
-            (string)getParam(
+            (string)$this->getDiagnosticMaintenanceParam(
                 'sys_maintenance_mode_html'
             );
 
@@ -2666,7 +2677,7 @@ class MyUnaDoctorScanner
 
         $bSoft =
             !empty(
-                (string)getParam(
+                (string)$this->getDiagnosticMaintenanceParam(
                     'sys_maintenance_mode'
                 )
             );

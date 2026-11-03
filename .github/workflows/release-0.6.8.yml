@@ -1,9 +1,9 @@
-name: Validate My UNA Doctor 0.6.7 candidate
+name: Validate My UNA Doctor 0.6.8 candidate
 on:
   push:
-    branches: [fix/una15-compatibility-067]
+    branches: [fix/scan-maintenance-068]
     paths:
-      - '.github/workflows/release-0.6.6.yml'
+      - '.github/workflows/release-0.6.8.yml'
       - 'scripts/build-release.py'
       - 'tests/updater-contract.php'
   pull_request:
@@ -50,10 +50,10 @@ jobs:
       - name: Verify language XML and release metadata
         run: |
           php -r 'if (simplexml_load_file("install/langs/en.xml") === false) exit(1);'
-          grep -F 'Version: **0.6.7**' README.md
-          grep -A1 -F 'Current package version:' MARKETPLACE.txt | grep -Fx '0.6.7'
+          grep -F 'Version: **0.6.8**' README.md
+          grep -A1 -F 'Current package version:' MARKETPLACE.txt | grep -Fx '0.6.8'
           ! grep -iE '0\.6\.4 CANDIDATE|validation pending' INSTALLATION.txt
-      - name: Build and verify full package and six direct updaters
+      - name: Build and verify full package and seven direct updaters
         run: |
           python3 scripts/build-release.py --output dist
           (cd dist && sha256sum -c SHA256SUMS)
@@ -61,7 +61,7 @@ jobs:
           import os, pathlib, zipfile
           root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'doctor-update-fixtures'
           root.mkdir()
-          for archive in pathlib.Path('dist').glob('*-to-0.6.7.zip'):
+          for archive in pathlib.Path('dist').glob('*-to-0.6.8.zip'):
               with zipfile.ZipFile(archive) as package:
                   package.extractall(root)
           PY
@@ -78,10 +78,10 @@ jobs:
           DOCTOR_UNA_INSTALLER="$RUNNER_TEMP/BxDolStudioInstaller.php" php tests/compatibility-contract.php install/config.php "$RUNNER_TEMP"/doctor-update-fixtures/*/install/config.php "$RUNNER_TEMP"/doctor-update-fixtures/*/source/install/config.php
       - name: Record exact build checkpoint
         run: |
-          cp docs/RELEASE-0.6.7.md dist/RELEASE-NOTES.md
+          cp docs/RELEASE-0.6.8.md dist/RELEASE-NOTES.md
           printf '\nSource commit: `%s`\n' "$(git rev-parse HEAD)" >> dist/RELEASE-NOTES.md
       - uses: actions/upload-artifact@v4
         with:
-          name: my-una-doctor-0.6.7-verified
+          name: my-una-doctor-0.6.8-verified
           path: dist/
           if-no-files-found: error

@@ -22,6 +22,13 @@ function removeTree($path) {
 }
 class DoctorUpdaterDbAdapter {
     public $module;
+    public $cron;
+    public function __construct() {
+        $this->cron = new PDO('sqlite::memory:');
+        $this->cron->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $this->cron->exec('CREATE TABLE sys_cron_jobs (name TEXT PRIMARY KEY, time TEXT, class TEXT, file TEXT, service_call TEXT)');
+        $this->cron->exec("INSERT INTO sys_cron_jobs VALUES ('unrelated', '0 * * * *', 'OtherCron', 'other.php', '')");
+    }
     public $saved = array('settings' => 'custom-value', 'scans' => array('kept'), 'references' => array('kept'));
     public function getModuleByUri($uri) { return $this->module; }
     public function getModulesBy($params) { return $this->module; }
@@ -73,6 +80,10 @@ class BxDolStudioInstaller {
             $this->actions[] = $action;
             if ($action === 'update_files') {
                 if ($this->actionUpdateFiles() !== BX_DOL_STUDIO_INSTALLER_SUCCESS) return array('result' => false);
+            } elseif ($action === 'execute_sql') {
+                $sql = file_get_contents($this->_sHomePath . 'install/sql/install.sql');
+                $this->oDb->cron->exec($sql);
+                $this->oDb->cron->exec($sql); // native retry must preserve one job
             } elseif (!in_array($action, array('clear_db_cache', 'clear_template_cache'), true)) {
                 throw new RuntimeException('Unexpected updater action: ' . $action);
             }
@@ -91,10 +102,10 @@ mkdir($site, 0777, true);
 define('BX_DIRECTORY_PATH_ROOT', $site);
 define('BX_DIRECTORY_PATH_MODULES', $site . 'modules/');
 try {
-    for ($minor = 1; $minor <= 6; $minor++) {
+    for ($minor = 1; $minor <= 7; $minor++) {
         removeTree($site . 'modules');
         $previous = '0.6.' . $minor;
-        $wrapper = 'update_' . $previous . '_0.6.7';
+        $wrapper = 'update_' . $previous . '_0.6.8';
         $module = $site . 'modules/newton/my_una_doctor/';
         mkdir($module . 'updates/' . $wrapper, 0777, true);
         $fileManager = new DoctorUpdaterFileAdapter();
@@ -119,10 +130,12 @@ try {
         $updater = new MyUnaDoctorUpdater($aConfig);
         $result = $updater->update(array('module_name' => 'my_una_doctor'));
         verify($result['result'], 'Update failed for ' . $previous);
-        verify($db->module['version'] === '0.6.7' && $db->module['enabled'] === 1, 'Version/enabled state mismatch');
+        verify($db->module['version'] === '0.6.8' && $db->module['enabled'] === 1, 'Version/enabled state mismatch');
         verify($db->saved === $saved, 'Saved data changed');
+        verify((int)$db->cron->query("SELECT COUNT(*) FROM sys_cron_jobs WHERE name='my_una_doctor_maintenance_recovery' AND time='* * * * *' AND class='MyUnaDoctorCron'")->fetchColumn() === 1, 'Recovery cron not registered exactly once');
+        verify((int)$db->cron->query("SELECT COUNT(*) FROM sys_cron_jobs WHERE name='unrelated'")->fetchColumn() === 1, 'Unrelated cron changed');
         verify(file_get_contents($module . 'client-local-data.txt') === 'preserve-client-data', 'Client file removed');
-        verify($updater->actions === array('update_files', 'clear_db_cache', 'clear_template_cache'), 'Unsafe action list');
+        verify($updater->actions === array('update_files', 'execute_sql', 'clear_db_cache', 'clear_template_cache'), 'Unsafe action list');
         verify(!file_exists($module . 'updates/' . $wrapper), 'Core did not clean up update package');
         foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($stage . '/' . $wrapper . '/source', FilesystemIterator::SKIP_DOTS)) as $file) {
             if (!$file->isFile()) continue;
@@ -131,7 +144,7 @@ try {
         }
         $result = $updater->update(array('module_name' => 'my_una_doctor'));
         verify(!$result['result'] && $result['code'] === BX_DOL_STUDIO_IU_RCE_WMV, 'Repeated updater must be rejected by version gate');
-        echo 'PASS: official updater contract ' . $previous . ' -> 0.6.7; wrong-version and modified-source guards, file identity, saved state and cleanup.' . PHP_EOL;
+        echo 'PASS: official updater contract ' . $previous . ' -> 0.6.8; wrong-version and modified-source guards, file identity, saved state and cleanup.' . PHP_EOL;
     }
 } finally {
     removeTree($site);

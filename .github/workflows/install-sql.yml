@@ -40,3 +40,8 @@ jobs:
           php tests/log-classification.php
           php tests/module-version-provenance.php
           php tests/module-version-provenance.php --missing-core-version
+          php tests/maintenance-lease.php
+          php tests/maintenance-lease-database.php
+          php tests/maintenance-cron.php
+          php tests/scan-maintenance.php
+          php tests/scan-maintenance-diagnostics.php

@@ -8,3 +8,5 @@ CREATE TABLE sys_std_pages_widgets (page_id INT UNSIGNED NOT NULL, widget_id INT
 INSERT INTO sys_std_pages VALUES (1, 0, 'home', 'Home', 'Home', '');
 INSERT INTO sys_std_widgets VALUES (10, 1, 'unrelated', 'manage', 'unrelated', '', '', '', '', '');
 INSERT INTO sys_std_pages_widgets VALUES (1, 10, 7);
+
+CREATE TABLE sys_cron_jobs (id INT UNSIGNED NOT NULL AUTO_INCREMENT, name VARCHAR(128) NOT NULL, time VARCHAR(128) NOT NULL, class VARCHAR(128) NOT NULL, file VARCHAR(255) NOT NULL, service_call TEXT NOT NULL, PRIMARY KEY(id), UNIQUE KEY(name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

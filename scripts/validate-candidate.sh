@@ -16,11 +16,16 @@ echo '=== 2. LOG CLASSIFICATION REGRESSIONS ==='
 echo '=== 2b. MODULE AND SYSTEM VERSION PROVENANCE ==='
 "$php_bin" tests/module-version-provenance.php
 "$php_bin" tests/module-version-provenance.php --missing-core-version
+"$php_bin" tests/maintenance-lease.php
+"$php_bin" tests/maintenance-lease-database.php
+"$php_bin" tests/maintenance-cron.php
+"$php_bin" tests/scan-maintenance.php
+"$php_bin" tests/scan-maintenance-diagnostics.php
 echo
 echo '=== 3. INSTALLATION SQL REGRESSIONS ==='
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 echo '=== 4. MODULE METADATA ==='
-"$php_bin" -r 'define("BX_DOL_MODULE_TYPE_MODULE", "module"); require "install/config.php"; if ($aConfig["version"] !== "0.6.7" || $aConfig["vendor"] !== "My UNA World" || $aConfig["name"] !== "my_una_doctor") exit(1); echo "PASS: My UNA Doctor 0.6.7 / My UNA World\n";'
+"$php_bin" -r 'define("BX_DOL_MODULE_TYPE_MODULE", "module"); require "install/config.php"; if ($aConfig["version"] !== "0.6.8" || $aConfig["vendor"] !== "My UNA World" || $aConfig["name"] !== "my_una_doctor") exit(1); echo "PASS: My UNA Doctor 0.6.8 / My UNA World\n";'
 echo '============================================================'
 echo ' OFFLINE VALIDATION PASSED — STAGING UPGRADE STILL REQUIRED'
 echo '============================================================'

@@ -1,16 +1,16 @@
-MY UNA DOCTOR 0.6.7 — INSTALLATION & SAFETY GUIDE
+MY UNA DOCTOR 0.6.8 — INSTALLATION & SAFETY GUIDE
 ===================================================
 
 Product: My UNA Doctor
 Vendor: My UNA World
 Type: Studio-only UNA CMS module
-Build: 0.6.7 — unpublished compatibility metadata candidate
+Build: 0.6.8 — native scan maintenance and recovery
 
 IMPORTANT
 ---------
 Create and verify a current backup before installing, updating or using any repair workflow.
 
-My UNA Doctor contains read-only diagnostics plus guarded repair infrastructure. Diagnostic findings alone do not authorize changes.
+My UNA Doctor contains diagnostics plus guarded repair infrastructure. Full scans temporarily enable native soft maintenance and restore the exact original options; findings do not authorize repairs. Diagnostic findings alone do not authorize changes.
 
 1. BEFORE INSTALLING
 --------------------
@@ -114,7 +114,7 @@ Doctor does not automatically delete .bx_maintenance merely because it exists.
 --------------------------
 Do not uninstall a working My UNA Doctor installation merely to change versions.
 
-Use my-una-doctor-<installed-version>-to-0.6.7.zip matching Studio version 0.6.1 through 0.6.6. Extract update_<installed-version>_0.6.7/ into modules/newton/my_una_doctor/updates/ and apply the downloaded update through UNA Studio. The updater replaces files and clears caches without executing full installation SQL. See docs/RELEASE-0.6.7.md for validation limits and post-update checks. Do not manually change sys_modules.version as a substitute for a real update procedure.
+Use my-una-doctor-<installed-version>-to-0.6.8.zip matching Studio version 0.6.1 through 0.6.7. Extract update_<installed-version>_0.6.8/ into modules/newton/my_una_doctor/updates/ and apply the downloaded update through UNA Studio. The updater replaces files, registers only Doctor's recovery cron and clears caches without rerunning full installation SQL. See docs/RELEASE-0.6.8.md for validation limits and post-update checks. Do not manually change sys_modules.version as a substitute for a real update procedure.
 
 11. AFTER INSTALLATION OR UPDATE
 --------------------------------

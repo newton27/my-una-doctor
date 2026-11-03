@@ -2,12 +2,16 @@
 
 **Health, Compatibility & Upgrade Readiness for UNA**
 
-Version: **0.6.7**  
+Version: **0.6.8**  
 Vendor: **My UNA World**
 
 > Know before you upgrade. Know what changed afterward. Know where to look when something goes wrong.
 
 My UNA Doctor is a Studio-only UNA CMS diagnostic and guarded-repair module. It evaluates application health, module integrity, maintenance and upgrade state, PHP compatibility, database consistency, cron registrations, filesystem conditions, recent actionable logs and protected repair state.
+
+## What's new in 0.6.8
+
+Full scans now activate native UNA maintenance while preserving administrator access, configured page display and exact original options. A shared lease prevents overlapping Doctor/World maintenance, and Doctor's every-minute recovery cron reopens an interrupted scan after its process has ended. Includes new native updaters from 0.6.1–0.6.7; see [release notes](docs/RELEASE-0.6.8.md).
 
 ## What's new in 0.6.7 (unpublished candidate)
 

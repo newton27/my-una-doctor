@@ -1,3 +1,5 @@
+DELETE FROM `sys_cron_jobs` WHERE `name` = 'my_una_doctor_maintenance_recovery';
+
 SET @sName = 'my_una_doctor';
 
 -- STUDIO PAGE & WIDGET

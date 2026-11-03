@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build unpublished 0.6.7 installation and version-specific UNA updater archives."""
+"""Build unpublished 0.6.8 installation and version-specific UNA updater archives."""
 import argparse
 import hashlib
 import json
@@ -8,12 +8,12 @@ import re
 import subprocess
 import zipfile
 
-VERSION = '0.6.7'
-PREVIOUS_VERSIONS = tuple(f'0.6.{n}' for n in range(1, 7))
+VERSION = '0.6.8'
+PREVIOUS_VERSIONS = tuple(f'0.6.{n}' for n in range(1, 8))
 PAYLOAD_FILES = (
     'CHANGELOG.md', 'INSTALLATION.txt', 'MARKETPLACE-DESCRIPTION.html',
     'MARKETPLACE.txt', 'README.md', 'cover.jpg', 'request.php',
-    'docs/RELEASE-0.6.7.md', 'docs/RELEASE-0.6.6.md', 'docs/INSTALL-SQL-COMPATIBILITY.md',
+    'docs/RELEASE-0.6.8.md', 'docs/RELEASE-0.6.7.md', 'docs/RELEASE-0.6.6.md', 'docs/INSTALL-SQL-COMPATIBILITY.md',
     'docs/RELEASE-0.6.5.md',
     'docs/REPAIR-BARRIER-2.md', 'docs/RUNTIME-PROTECTION.md',
 )
@@ -33,7 +33,7 @@ $aConfig = array(
     'module_uri' => 'my_una_doctor',
     'db_prefix' => 'my_una_doctor_',
     'class_prefix' => 'MyUnaDoctor',
-    'install' => array('update_files' => 1, 'clear_db_cache' => 1, 'clear_template_cache' => 1),
+    'install' => array('update_files' => 1, 'execute_sql' => 1, 'clear_db_cache' => 1, 'clear_template_cache' => 1),
     'language_category' => 'My UNA Doctor',
     'delete_files' => array(),
 );
@@ -87,7 +87,8 @@ def build(root, output, commit):
         files = {prefix + 'source/' + name: data for name, data in payload.items()}
         files[prefix + 'install/config.php'] = updater_config(previous).encode()
         files[prefix + 'install/installer.php'] = installer
-        # Deliberately no top-level install/sql: the updater never reruns full SQL.
+        # Register recovery only; never rerun installation SQL or modify saved data.
+        files[prefix + 'install/sql/install.sql'] = (root / 'install/sql/maintenance-recovery.sql').read_bytes()
         write_zip(output / f'my-una-doctor-{previous}-to-{VERSION}.zip', files)
     assets = []
     for path in sorted(output.glob('*.zip')):

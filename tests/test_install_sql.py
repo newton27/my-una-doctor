@@ -92,7 +92,7 @@ class InstallerDatabaseTests(unittest.TestCase):
 
     def snapshot(self):
         tables = ['sys_options_types', 'sys_options_categories', 'sys_options',
-                  'sys_std_pages', 'sys_std_widgets', 'sys_std_pages_widgets']
+                  'sys_std_pages', 'sys_std_widgets', 'sys_std_pages_widgets', 'sys_cron_jobs']
         return {table: self.execute(f'SELECT * FROM `{table}` ORDER BY 1, 2') for table in tables}
 
     def assert_registration(self):
