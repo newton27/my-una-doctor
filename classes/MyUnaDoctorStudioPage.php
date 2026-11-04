@@ -14,9 +14,9 @@ class MyUnaDoctorStudioPage extends BxTemplStudioModule
 
         $this->aMenuItems = array(
             'settings' => array('name' => 'settings', 'icon' => 'cogs', 'title' => '_my_una_doctor_settings'),
-            'overview' => array('name' => 'overview', 'icon' => 'activity', 'title' => '_my_una_doctor_overview'),
+            'overview' => array('name' => 'overview', 'icon' => 'heartbeat', 'title' => '_my_una_doctor_overview'),
             'system' => array('name' => 'system', 'icon' => 'server', 'title' => '_my_una_doctor_system'),
-            'module_health' => array('name' => 'module_health', 'icon' => 'puzzle', 'title' => '_my_una_doctor_modules'),
+            'module_health' => array('name' => 'module_health', 'icon' => 'puzzle-piece', 'title' => '_my_una_doctor_modules'),
             'file_integrity' => array('name' => 'file_integrity', 'icon' => 'shield-alt', 'title' => 'File Integrity'),
             'reference_packages' => array('name' => 'reference_packages', 'icon' => 'archive', 'title' => 'Module Reference Library'),
             'local_repair_knowledge' => array('name' => 'local_repair_knowledge', 'icon' => 'book', 'title' => 'Local Repair Knowledge'),
@@ -47,7 +47,7 @@ class MyUnaDoctorStudioPage extends BxTemplStudioModule
         $s = $this->css();
         $s .= '<div class="mud-wrap">';
         $s .= '<div class="mud-hero"><div><h1>My UNA Doctor</h1><p>Diagnose first. Repair only when the evidence is clear.</p></div>';
-        $s .= '<a class="bx-btn mud-run" href="' . $this->esc($sRunUrl) . '"><i class="sys-icon activity" aria-hidden="true"></i> Run Full Health Scan</a></div>';
+        $s .= '<a class="bx-btn mud-run" href="' . $this->esc($sRunUrl) . '"><i class="sys-icon heartbeat" aria-hidden="true"></i> Run Full Health Scan</a></div>';
 
         if (empty($aScan)) {
             $s .= '<div class="mud-empty"><h2>No health scan has been recorded yet.</h2><p>Run the first scan to establish this UNA site’s baseline.</p></div></div>';
