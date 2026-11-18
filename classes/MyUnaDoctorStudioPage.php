@@ -14,6 +14,7 @@ class MyUnaDoctorStudioPage extends BxTemplStudioModule
 
         $this->aMenuItems = array(
             'settings' => array('name' => 'settings', 'icon' => 'cogs', 'title' => '_my_una_doctor_settings'),
+            'branding' => array('name' => 'branding', 'icon' => 'image', 'title' => '_my_una_doctor_branding_title'),
             'overview' => array('name' => 'overview', 'icon' => 'heartbeat', 'title' => '_my_una_doctor_overview'),
             'system' => array('name' => 'system', 'icon' => 'server', 'title' => '_my_una_doctor_system'),
             'module_health' => array('name' => 'module_health', 'icon' => 'puzzle-piece', 'title' => '_my_una_doctor_modules'),
@@ -4297,6 +4298,19 @@ HTML
         }
         $s .= '</tbody></table></div></div></div>';
         return $s;
+    }
+
+    public function getBranding()
+    {
+        if (!isLogged() || !isAdmin() || !$this->oDoctor || !$this->oDoctor->isEnabled())
+            return MsgBox(_t('_Access denied'));
+
+        require_once __DIR__ . '/MyUnaDoctorClientBranding.php';
+        return \MyUnaDoctorBranding\renderPage(
+            \MyUnaDoctorBranding\csrfToken('my_una_doctor_branding_' . (int)getLoggedId()),
+            BX_DOL_URL_STUDIO . 'module.php?name=my_una_doctor&page=branding',
+            'My UNA Doctor'
+        );
     }
 
     public function getSettings()

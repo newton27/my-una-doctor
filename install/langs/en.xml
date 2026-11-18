@@ -33,4 +33,22 @@
 
     <string name="_my_una_doctor_opt_use_maintenance_page"><![CDATA[Use My UNA Doctor Page]]></string>
     <string name="_my_una_doctor_opt_use_maintenance_page_info"><![CDATA[When enabled, Doctor uses its branded maintenance page with video, live server health and personalized text. When disabled, Doctor preserves and uses the site's existing UNA maintenance page.]]></string>
+    <string name="_my_una_doctor_branding_title"><![CDATA[Client branding]]></string>
+    <string name="_my_una_doctor_branding_preview"><![CDATA[Saved branding preview]]></string>
+    <string name="_my_una_doctor_branding_name"><![CDATA[Community name]]></string>
+    <string name="_my_una_doctor_branding_name_help"><![CDATA[Use up to 80 characters. Leave empty to use the default name.]]></string>
+    <string name="_my_una_doctor_branding_logo"><![CDATA[Community logo]]></string>
+    <string name="_my_una_doctor_branding_logo_help"><![CDATA[PNG, JPEG or WebP, up to 2 MB (2,000,000 bytes) and 4096 pixels per side. The full image keeps its proportions.]]></string>
+    <string name="_my_una_doctor_branding_remove"><![CDATA[Remove the current logo and restore the default mark]]></string>
+    <string name="_my_una_doctor_branding_save"><![CDATA[Save branding]]></string>
+    <string name="_my_una_doctor_branding_reset"><![CDATA[Reset branding]]></string>
+    <string name="_my_una_doctor_branding_saved"><![CDATA[Branding saved.]]></string>
+    <string name="_my_una_doctor_branding_error_invalid_branding"><![CDATA[Use a name of up to 80 characters without line breaks.]]></string>
+    <string name="_my_una_doctor_branding_error_invalid_logo"><![CDATA[Choose a PNG, JPEG or WebP logo up to 2 MB and 4096 pixels per side. Replace the logo or select Remove, then save.]]></string>
+    <string name="_my_una_doctor_branding_error_branding_storage"><![CDATA[Branding could not be read or saved. Ask the webmaster to check the private branding folder. Reset branding can recover a damaged settings file.]]></string>
+    <string name="_my_una_doctor_branding_error_csrf"><![CDATA[Your session has changed. Refresh the page and try again.]]></string>
+    <string name="_my_una_doctor_branding_error_method"><![CDATA[Use the page controls to submit your changes.]]></string>
+    <string name="_my_una_doctor_branding_error_input"><![CDATA[Check the submitted fields and try again.]]></string>
+    <string name="_my_una_doctor_branding_intro"><![CDATA[Set the client name and logo in Doctor's public maintenance header.]]></string>
+    <string name="_my_una_doctor_branding_scope"><![CDATA[Changes apply the next time Doctor builds its maintenance page. Existing header visibility settings still apply. Saving branding does not start maintenance, a repair or a backup.]]></string>
 </resources>

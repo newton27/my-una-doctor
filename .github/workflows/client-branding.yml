@@ -1,0 +1,51 @@
+name: Client branding checks
+
+on:
+  push:
+    branches: [feature/client-branding-20261118]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  branding:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.4']
+    env:
+      RW_PHP: php
+    steps:
+      - name: Check out the source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, pdo_sqlite, dom, xml, simplexml, pcntl, posix
+          coverage: none
+          tools: none
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Check client branding storage and preview
+        run: php tests/branding_test.php
+      - name: Check native permissions, CSRF, multipart uploads and public output
+        run: python3 tests/branding_http_test.py
+      - name: Check changed Doctor source syntax
+        run: |
+          php -l classes/MyUnaDoctorClientBranding.php
+          php -l classes/MyUnaDoctorMaintenance.php
+          php -l classes/MyUnaDoctorStudioPage.php
