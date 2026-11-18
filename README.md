@@ -9,6 +9,16 @@ Vendor: **My UNA World**
 
 My UNA Doctor is a Studio-only UNA CMS diagnostic and guarded-repair module. It evaluates application health, module integrity, maintenance and upgrade state, PHP compatibility, database consistency, cron registrations, filesystem conditions, recent actionable logs and protected repair state.
 
+## Unreleased client branding controls
+
+Studio → My UNA Doctor → Client branding provides a community name and PNG, JPEG or WebP logo for the public maintenance header. Uploads are limited to 2,000,000 bytes and 4096 pixels per side, validated from image bytes and stored outside the public document root. Operators can replace, remove or reset the logo. Existing header visibility and maintenance text settings still apply.
+
+Saving branding does not start maintenance, repairs or backups. The new appearance is embedded the next time Doctor builds its maintenance HTML through the existing supported `sys_maintenance_mode_html` option. The rendered page does not need a logo endpoint, database access, an image service or the UNA cache. Product attribution remains My UNA Doctor.
+
+This is unreleased source. A guarded 0.6.6→0.6.7 updater template and exact language delta are included under `upgrade-templates/0.6.6_0.6.7/`. They are not a built updater or a release. Advancing the release version, reconciling the release build pipeline, live Studio acceptance and packaging remain pending. The current 0.6.6 release builder and publication workflows are preserved. Existing published 0.6.6 files and assets are unchanged. If the default private parent directory cannot be written by the website's PHP user, the webmaster can set `MY_UNA_DOCTOR_BRANDING_DIR` to a writable absolute directory outside both the UNA root and document root. Private directories use 0700 and files 0600.
+
+Validation: `php tests/branding_test.php` and `python3 tests/branding_http_test.py` cover the private store, native Studio entry, operator and CSRF guards, actual multipart uploads, reset, and the real maintenance renderer. These fixtures do not perform a live maintenance operation.
+
 ## What's new in 0.6.6
 
 UNA-compatible installation SQL, safe sequential installation retries and direct native file updaters from 0.6.1–0.6.5. See [release notes](docs/RELEASE-0.6.6.md) for package selection and validation limits.
@@ -125,3 +135,4 @@ Choose **Run Full Health Scan** for the complete diagnostic report.
 ## Backup notice
 
 Before performing any repair or upgrade-related operation, create and verify a current backup of the UNA database and site files. My UNA World can be used for this when installed.
+

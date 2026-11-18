@@ -23,6 +23,15 @@ class MyUnaDoctorMaintenance
         $iStartedAt = max(1, (int)$iStartedAt);
         $iEtaAt = max($iStartedAt + 60, (int)$iEtaAt);
 
+        require_once __DIR__ . '/MyUnaDoctorClientBranding.php';
+        $aBranding = \MyUnaDoctorBranding\presentation('My UNA Doctor');
+        $sClientName = \MyUnaDoctorBranding\e($aBranding['brand_name']);
+        $sClientMark = '<div class="mud-heart" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none"><path d="M8 34h11l4-12 7 25 7-34 7 21h12" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
+        if ($aBranding['logo_uri'] !== '') {
+            $sClientMark = '<div class="mud-heart mud-client-logo" aria-hidden="true"><img src="'
+                . \MyUnaDoctorBranding\e($aBranding['logo_uri']) . '" alt=""></div>';
+        }
+
         $sStart = (string)$iStartedAt;
         $sEta = (string)$iEtaAt;
 
@@ -111,6 +120,7 @@ body{min-height:100vh}.mud-page{min-height:100vh;display:flex;flex-direction:col
 @media(max-width:1050px){.mud-header{height:auto;min-height:96px;padding:20px 4vw}.mud-trust{display:none}.mud-main{grid-template-columns:1fr;gap:25px}.mud-hero{padding-top:0}.mud-lead{margin-bottom:35px}.mud-side{display:grid;grid-template-columns:1fr 1fr;gap:18px}.mud-visual{margin-top:0}.mud-status{grid-template-columns:1fr 1fr;gap:20px}.mud-card{border-right:0;border-bottom:1px solid var(--line);padding-bottom:18px}.mud-card:nth-child(3),.mud-card:nth-child(4){border-bottom:0}}
 @media(max-width:720px){.mud-header-left{gap:14px}.mud-divider,.mud-pill{display:none}.mud-heart{width:48px;height:44px}.mud-brandtext strong{font-size:25px}.mud-main{width:90vw;margin-top:22px}.mud-hero h1{font-size:49px;letter-spacing:-2px}.mud-lead{font-size:17px;margin-top:25px}.mud-side{grid-template-columns:1fr}.mud-visual{height:230px}.mud-health-overlay{left:11px;right:11px;bottom:10px;padding:10px 11px}.mud-health-sub{display:none}.mud-health-metric{padding:6px}.mud-health-metric b{font-size:12px}.mud-status{grid-template-columns:1fr;padding:22px}.mud-card{border-bottom:1px solid var(--line)!important;padding:16px 4px}.mud-card:last-child{border-bottom:0!important}.mud-footer{flex-direction:column;text-align:center}.mud-footer .sep{display:none}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}.mud-health-dot{animation:none!important}}
+.mud-heart.mud-client-logo{width:110px;max-width:22vw;background:none;box-shadow:none}.mud-client-logo img{display:block;width:100%;height:100%;object-fit:contain}.mud-brandtext strong{max-width:min(50vw,480px);white-space:normal;overflow-wrap:anywhere;line-height:1.15}
 </style>
 </head>
 <body>
@@ -118,8 +128,8 @@ body{min-height:100vh}.mud-page{min-height:100vh;display:flex;flex-direction:col
 <header class="mud-header"__HEADER_HIDDEN__>
   <div class="mud-header-left">
     <div class="mud-brand">
-      <div class="mud-heart" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none"><path d="M8 34h11l4-12 7 25 7-34 7 21h12" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <div class="mud-brandtext"><strong>My UNA Doctor</strong><span>Powered by UNA CMS</span></div>
+      __CLIENT_MARK__
+      <div class="mud-brandtext"><strong dir="auto">__CLIENT_NAME__</strong><span>Powered by UNA CMS</span></div>
     </div>
     <div class="mud-divider"></div>
     <div class="mud-pill"><span aria-hidden="true">🛠</span> Maintenance</div>
@@ -294,6 +304,8 @@ body{min-height:100vh}.mud-page{min-height:100vh;display:flex;flex-direction:col
 </html>
 HTML
         , array(
+            '__CLIENT_NAME__' => $sClientName,
+            '__CLIENT_MARK__' => $sClientMark,
             '__START__' => $sStart,
             '__ETA__' => $sEta,
             '__HEADING__' => $sHeading,
@@ -306,3 +318,4 @@ HTML
         ));
     }
 }
+
