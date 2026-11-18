@@ -44,6 +44,8 @@ jobs:
         run: php tests/branding_test.php
       - name: Check native permissions, CSRF, multipart uploads and public output
         run: python3 tests/branding_http_test.py
+      - name: Check future native updater template and language delta
+        run: php tests/branding_updater_template_test.php
       - name: Check changed Doctor source syntax
         run: |
           php -l classes/MyUnaDoctorClientBranding.php
